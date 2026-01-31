@@ -1,0 +1,167 @@
+'use client'
+
+import { useState } from 'react'
+import { formatCurrency } from '@/lib/utils'
+import { CategoryChip } from '@/components/ui/category-chip'
+import { createClient } from '@/lib/supabase/client'
+import type { Tables } from '@/lib/database.types'
+
+interface BudgetBuilderProps {
+  categories: Tables<'categories'>[]
+  budgets: Tables<'budgets'>[]
+  totalIncome: number
+  spentByCategory: Record<string, number>
+  currentMonth: string
+}
+
+export function BudgetBuilder({
+  categories,
+  budgets,
+  totalIncome,
+  spentByCategory,
+  currentMonth,
+}: BudgetBuilderProps) {
+  const [allocations, setAllocations] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {}
+    budgets.forEach(b => {
+      initial[b.category_id] = Number(b.allocated)
+    })
+    return initial
+  })
+  const [saving, setSaving] = useState(false)
+
+  const supabase = createClient()
+
+  const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + a, 0)
+  const unallocated = totalIncome - totalAllocated
+  const isBalanced = Math.abs(unallocated) < 0.01
+
+  async function handleSave() {
+    setSaving(true)
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Upsert all budget allocations
+    const upserts = Object.entries(allocations).map(([categoryId, allocated]) => ({
+      user_id: user.id,
+      category_id: categoryId,
+      month: currentMonth,
+      allocated,
+    }))
+
+    await supabase.from('budgets').upsert(upserts, {
+      onConflict: 'user_id,household_id,category_id,month',
+    })
+
+    setSaving(false)
+  }
+
+  function handleAllocationChange(categoryId: string, value: string) {
+    const num = parseFloat(value) || 0
+    setAllocations(prev => ({ ...prev, [categoryId]: num }))
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Income & Unallocated Header */}
+      <div className="card bg-gradient-to-br from-sprout-50 to-bloom-50">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm text-gray-500">Monthly Income</p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalIncome)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">To Allocate</p>
+            <p className={`text-2xl font-bold ${unallocated > 0 ? 'text-coral-500' : unallocated < 0 ? 'text-red-500' : 'text-sprout-500'}`}>
+              {formatCurrency(Math.abs(unallocated))}
+              {unallocated < 0 && ' over'}
+            </p>
+          </div>
+        </div>
+
+        {/* Zero-based progress */}
+        <div className="h-3 bg-white rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${
+              isBalanced ? 'bg-sprout-500' : unallocated < 0 ? 'bg-red-500' : 'bg-bloom-500'
+            }`}
+            style={{ width: `${Math.min((totalAllocated / totalIncome) * 100, 100)}%` }}
+          />
+        </div>
+
+        {isBalanced && (
+          <p className="text-center text-sprout-600 font-medium text-sm mt-3">
+            Every dollar has a job!
+          </p>
+        )}
+      </div>
+
+      {/* Category Allocations */}
+      <div className="space-y-3">
+        {categories.map((category) => {
+          const allocated = allocations[category.id] || 0
+          const spent = spentByCategory[category.id] || 0
+          const remaining = allocated - spent
+          const progress = allocated > 0 ? (spent / allocated) * 100 : 0
+          const isOver = remaining < 0
+
+          return (
+            <div key={category.id} className="card">
+              <div className="flex items-center gap-3 mb-3">
+                <CategoryChip
+                  name={category.name}
+                  color={category.color}
+                  icon={category.icon}
+                  size="md"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900">{category.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {formatCurrency(spent)} spent
+                    {allocated > 0 && ` of ${formatCurrency(allocated)}`}
+                  </p>
+                </div>
+                <div className="w-24">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="10"
+                      value={allocated || ''}
+                      onChange={(e) => handleAllocationChange(category.id, e.target.value)}
+                      placeholder="0"
+                      className="input pl-7 py-2 text-right text-sm font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {allocated > 0 && (
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      isOver ? 'bg-red-500' : progress > 80 ? 'bg-amber-500' : 'bg-sprout-500'
+                    }`}
+                    style={{ width: `${Math.min(progress, 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Save Button */}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="btn-primary w-full"
+      >
+        {saving ? 'Saving...' : 'Save Budget'}
+      </button>
+    </div>
+  )
+}
