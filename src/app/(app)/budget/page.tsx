@@ -58,7 +58,7 @@ export default async function BudgetPage() {
       <BudgetBuilder
         categories={categories || []}
         budgets={budgets || []}
-        totalIncome={totalIncome}
+        incomeEntries={incomeEntries || []}
         spentByCategory={spentByCategory}
         currentMonth={currentMonth}
       />

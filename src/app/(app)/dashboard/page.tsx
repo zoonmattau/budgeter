@@ -5,6 +5,8 @@ import { UpcomingBills } from '@/components/dashboard/upcoming-bills'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
 import { ActiveChallenge } from '@/components/dashboard/active-challenge'
+import { QuickLinks } from '@/components/dashboard/quick-links'
+import { SpendingSnapshot } from '@/components/dashboard/spending-snapshot'
 import { format, startOfMonth } from 'date-fns'
 
 export default async function DashboardPage() {
@@ -23,7 +25,8 @@ export default async function DashboardPage() {
     { data: goals },
     { data: bills },
     { data: challenges },
-    { data: categories },
+    { data: expenseCategories },
+    { data: incomeCategories },
   ] = await Promise.all([
     supabase
       .from('income_entries')
@@ -40,8 +43,7 @@ export default async function DashboardPage() {
       .select('*, categories(*)')
       .eq('user_id', user.id)
       .gte('date', currentMonth)
-      .order('date', { ascending: false })
-      .limit(5),
+      .order('date', { ascending: false }),
     supabase
       .from('goals')
       .select('*')
@@ -68,6 +70,11 @@ export default async function DashboardPage() {
       .select('*')
       .eq('user_id', user.id)
       .eq('type', 'expense'),
+    supabase
+      .from('categories')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('type', 'income'),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
@@ -94,6 +101,12 @@ export default async function DashboardPage() {
         totalAllocated={totalAllocated}
         totalSpent={totalSpent}
       />
+
+      {/* Quick Links */}
+      <QuickLinks />
+
+      {/* Spending Snapshot */}
+      <SpendingSnapshot transactions={transactions || []} />
 
       {/* Active Challenge */}
       {challenges && (
@@ -130,11 +143,11 @@ export default async function DashboardPage() {
             See all
           </a>
         </div>
-        <RecentTransactions transactions={transactions || []} />
+        <RecentTransactions transactions={(transactions || []).slice(0, 5)} />
       </section>
 
       {/* Quick Add FAB */}
-      <QuickAddButton categories={categories || []} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} />
     </div>
   )
 }

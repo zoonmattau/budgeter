@@ -5,78 +5,128 @@ import { useRouter } from 'next/navigation'
 import { ArrowRight, ArrowLeft, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
+import { CurrencyInput } from '@/components/ui/currency-input'
+import { HouseholdStep } from '@/components/household/household-step'
 
-type Step = 'welcome' | 'income' | 'goal' | 'complete'
+type Step = 'welcome' | 'income' | 'household' | 'goal' | 'complete'
+
+const STEPS: Step[] = ['welcome', 'income', 'household', 'goal', 'complete']
 
 export default function OnboardingPage() {
   const router = useRouter()
   const [step, setStep] = useState<Step>('welcome')
   const [income, setIncome] = useState('')
   const [incomeSource, setIncomeSource] = useState('Salary')
+  const [householdId, setHouseholdId] = useState<string | null>(null)
   const [goalName, setGoalName] = useState('')
   const [goalAmount, setGoalAmount] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
 
   async function handleComplete() {
     setLoading(true)
+    setError(null)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        setError('Not authenticated. Please log in again.')
+        setLoading(false)
+        return
+      }
 
-    const currentMonth = new Date().toISOString().slice(0, 8) + '01'
+      const currentMonth = new Date().toISOString().slice(0, 8) + '01'
 
-    // Save income if provided
-    if (income) {
-      await supabase.from('income_entries').insert({
-        user_id: user.id,
-        month: currentMonth,
-        source: incomeSource,
-        amount: parseFloat(income),
-        is_recurring: true,
-      })
+      // Save income if provided
+      if (income) {
+        const { error: incomeError } = await supabase.from('income_entries').insert({
+          user_id: user.id,
+          household_id: householdId,
+          month: currentMonth,
+          source: incomeSource,
+          amount: parseFloat(income),
+          is_recurring: true,
+        })
+        if (incomeError) {
+          console.error('Income save error:', incomeError)
+          setError(`Failed to save income: ${incomeError.message}`)
+          setLoading(false)
+          return
+        }
+      }
+
+      // Create goal if provided
+      if (goalName && goalAmount) {
+        const { error: goalError } = await supabase.from('goals').insert({
+          user_id: user.id,
+          household_id: householdId,
+          name: goalName,
+          target_amount: parseFloat(goalAmount),
+          icon: 'target',
+          color: '#d946ef',
+          visual_type: 'plant',
+        })
+        if (goalError) {
+          console.error('Goal save error:', goalError)
+          setError(`Failed to save goal: ${goalError.message}`)
+          setLoading(false)
+          return
+        }
+      }
+
+      // Mark onboarding complete
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ onboarding_completed: true })
+        .eq('id', user.id)
+
+      if (profileError) {
+        console.error('Profile update error:', profileError)
+        setError(`Failed to update profile: ${profileError.message}`)
+        setLoading(false)
+        return
+      }
+
+      router.push('/dashboard')
+      router.refresh()
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      setError('An unexpected error occurred')
+      setLoading(false)
     }
+  }
 
-    // Create goal if provided
-    if (goalName && goalAmount) {
-      await supabase.from('goals').insert({
-        user_id: user.id,
-        name: goalName,
-        target_amount: parseFloat(goalAmount),
-        icon: 'target',
-        color: '#d946ef',
-        visual_type: 'plant',
-      })
-    }
-
-    // Mark onboarding complete
-    await supabase
-      .from('profiles')
-      .update({ onboarding_completed: true })
-      .eq('id', user.id)
-
-    router.push('/dashboard')
-    router.refresh()
+  function handleHouseholdComplete(hId: string | null) {
+    setHouseholdId(hId)
+    setStep('goal')
   }
 
   return (
     <div className="flex flex-col h-full">
       {/* Progress dots */}
       <div className="flex items-center justify-center gap-2 mb-8">
-        {(['welcome', 'income', 'goal', 'complete'] as Step[]).map((s, i) => (
+        {STEPS.map((s, i) => (
           <div
             key={s}
             className={`w-2 h-2 rounded-full transition-all ${
               step === s
                 ? 'w-6 bg-bloom-500'
-                : i < ['welcome', 'income', 'goal', 'complete'].indexOf(step)
+                : i < STEPS.indexOf(step)
                 ? 'bg-bloom-300'
                 : 'bg-gray-200'
             }`}
           />
         ))}
       </div>
+
+      {/* Error display */}
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
 
       {/* Step content */}
       <div className="flex-1">
@@ -91,7 +141,14 @@ export default function OnboardingPage() {
             incomeSource={incomeSource}
             setIncomeSource={setIncomeSource}
             onBack={() => setStep('welcome')}
-            onNext={() => setStep('goal')}
+            onNext={() => setStep('household')}
+          />
+        )}
+
+        {step === 'household' && (
+          <HouseholdStep
+            onBack={() => setStep('income')}
+            onNext={handleHouseholdComplete}
           />
         )}
 
@@ -101,7 +158,7 @@ export default function OnboardingPage() {
             setGoalName={setGoalName}
             goalAmount={goalAmount}
             setGoalAmount={setGoalAmount}
-            onBack={() => setStep('income')}
+            onBack={() => setStep('household')}
             onNext={() => setStep('complete')}
           />
         )}
@@ -111,6 +168,7 @@ export default function OnboardingPage() {
             income={income}
             goalName={goalName}
             goalAmount={goalAmount}
+            householdId={householdId}
             onBack={() => setStep('goal')}
             onComplete={handleComplete}
             loading={loading}
@@ -143,11 +201,11 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
         </div>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-sprout-100 flex items-center justify-center text-sprout-600 font-semibold text-sm">2</div>
-          <p className="text-gray-700">Create your first savings goal</p>
+          <p className="text-gray-700">Set up your household</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-sprout-100 flex items-center justify-center text-sprout-600 font-semibold text-sm">3</div>
-          <p className="text-gray-700">Start budgeting!</p>
+          <p className="text-gray-700">Create your first savings goal</p>
         </div>
       </div>
 
@@ -188,19 +246,12 @@ function IncomeStep({
       <div className="space-y-5 mb-8">
         <div>
           <label className="label">Amount (after tax)</label>
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-xl">$</span>
-            <input
-              type="number"
-              min="0"
-              step="100"
-              value={income}
-              onChange={(e) => setIncome(e.target.value)}
-              placeholder="5,000"
-              className="input pl-10 text-2xl font-bold h-16"
-              autoFocus
-            />
-          </div>
+          <CurrencyInput
+            value={income}
+            onChange={setIncome}
+            placeholder="5,000"
+            autoFocus
+          />
         </div>
 
         <div>
@@ -301,18 +352,11 @@ function GoalStep({
 
         <div>
           <label className="label">Target amount</label>
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-xl">$</span>
-            <input
-              type="number"
-              min="0"
-              step="100"
-              value={goalAmount}
-              onChange={(e) => setGoalAmount(e.target.value)}
-              placeholder="5,000"
-              className="input pl-10 text-2xl font-bold h-16"
-            />
-          </div>
+          <CurrencyInput
+            value={goalAmount}
+            onChange={setGoalAmount}
+            placeholder="5,000"
+          />
         </div>
       </div>
 
@@ -340,6 +384,7 @@ function CompleteStep({
   income,
   goalName,
   goalAmount,
+  householdId,
   onBack,
   onComplete,
   loading,
@@ -347,6 +392,7 @@ function CompleteStep({
   income: string
   goalName: string
   goalAmount: string
+  householdId: string | null
   onBack: () => void
   onComplete: () => void
   loading: boolean
@@ -373,6 +419,12 @@ function CompleteStep({
             <span className="font-semibold text-sprout-600">{formatCurrency(parseFloat(income))}</span>
           </div>
         )}
+        {householdId && (
+          <div className="flex items-center justify-between py-3 border-b border-gray-50">
+            <span className="text-gray-600">Household</span>
+            <span className="font-medium text-bloom-600">Set up</span>
+          </div>
+        )}
         {goalName && goalAmount && (
           <div className="flex items-center justify-between py-3">
             <span className="text-gray-600">First Goal</span>
@@ -382,7 +434,7 @@ function CompleteStep({
             </div>
           </div>
         )}
-        {!income && !goalName && (
+        {!income && !goalName && !householdId && (
           <p className="text-gray-400 text-center py-4">No data added yet - that&apos;s okay!</p>
         )}
       </div>

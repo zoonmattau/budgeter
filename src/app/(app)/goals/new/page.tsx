@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Sparkles, Plane, Car, Home, Gift, GraduationCap } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { CurrencyInput } from '@/components/ui/currency-input'
 
 const goalTemplates = [
   { name: 'Emergency Fund', icon: Sparkles, color: '#d946ef', target: 10000 },
@@ -113,19 +114,12 @@ export default function NewGoalPage() {
 
           <div>
             <label className="label">Target Amount</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={targetAmount}
-                onChange={(e) => setTargetAmount(e.target.value)}
-                placeholder="10,000"
-                className="input pl-8 text-lg font-semibold"
-                required
-              />
-            </div>
+            <CurrencyInput
+              value={targetAmount}
+              onChange={setTargetAmount}
+              placeholder="10,000"
+              required
+            />
           </div>
 
           <div>

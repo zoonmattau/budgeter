@@ -12,7 +12,7 @@ export default async function TransactionsPage() {
   const currentMonth = startOfMonth(new Date())
   const monthEnd = endOfMonth(new Date())
 
-  const [{ data: transactions }, { data: categories }] = await Promise.all([
+  const [{ data: transactions }, { data: expenseCategories }, { data: incomeCategories }] = await Promise.all([
     supabase
       .from('transactions')
       .select('*, categories(*)')
@@ -25,6 +25,11 @@ export default async function TransactionsPage() {
       .select('*')
       .eq('user_id', user.id)
       .eq('type', 'expense'),
+    supabase
+      .from('categories')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('type', 'income'),
   ])
 
   const totalExpenses = transactions
@@ -61,7 +66,7 @@ export default async function TransactionsPage() {
       {/* Transactions List */}
       <TransactionsList transactions={transactions || []} />
 
-      <QuickAddButton categories={categories || []} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Wallet, Landmark, CreditCard, TrendingUp, Receipt } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { CurrencyInput } from '@/components/ui/currency-input'
 
 const accountTypes = [
   { value: 'bank', label: 'Bank Account', icon: Landmark, isAsset: true },
@@ -107,19 +108,12 @@ export default function NewAccountPage() {
           <label className="label">
             {selectedType.isAsset ? 'Current Balance' : 'Amount Owed'}
           </label>
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={balance}
-              onChange={(e) => setBalance(e.target.value)}
-              placeholder="0.00"
-              className="input pl-8 text-lg font-semibold"
-              required
-            />
-          </div>
+          <CurrencyInput
+            value={balance}
+            onChange={setBalance}
+            placeholder="0"
+            required
+          />
         </div>
 
         <div>

@@ -44,18 +44,21 @@ export interface Database {
           id: string
           name: string
           created_by: string
+          invite_code: string | null
           created_at: string
         }
         Insert: {
           id?: string
           name: string
           created_by: string
+          invite_code?: string | null
           created_at?: string
         }
         Update: {
           id?: string
           name?: string
           created_by?: string
+          invite_code?: string | null
           created_at?: string
         }
         Relationships: [

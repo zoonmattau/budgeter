@@ -1,15 +1,19 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { RotateCcw, Wand2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
+import { IncomeEditor } from '@/components/budget/income-editor'
+import { BudgetWizard } from '@/components/budget/budget-wizard'
 import { createClient } from '@/lib/supabase/client'
 import type { Tables } from '@/lib/database.types'
 
 interface BudgetBuilderProps {
   categories: Tables<'categories'>[]
   budgets: Tables<'budgets'>[]
-  totalIncome: number
+  incomeEntries: Tables<'income_entries'>[]
   spentByCategory: Record<string, number>
   currentMonth: string
 }
@@ -17,10 +21,17 @@ interface BudgetBuilderProps {
 export function BudgetBuilder({
   categories,
   budgets,
-  totalIncome,
+  incomeEntries,
   spentByCategory,
   currentMonth,
 }: BudgetBuilderProps) {
+  const router = useRouter()
+  const totalIncome = incomeEntries.reduce((sum, e) => sum + Number(e.amount), 0)
+  const hasNoBudget = budgets.length === 0
+
+  // Show wizard for first-time users
+  const [showWizard, setShowWizard] = useState(hasNoBudget && totalIncome > 0 && categories.length > 0)
+
   const [allocations, setAllocations] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {}
     budgets.forEach(b => {
@@ -36,23 +47,55 @@ export function BudgetBuilder({
   const unallocated = totalIncome - totalAllocated
   const isBalanced = Math.abs(unallocated) < 0.01
 
+  function handleReset() {
+    setAllocations({})
+  }
+
+  function handleWizardComplete() {
+    setShowWizard(false)
+    router.refresh()
+  }
+
+  // Show the step-by-step wizard
+  if (showWizard) {
+    return (
+      <BudgetWizard
+        categories={categories}
+        totalIncome={totalIncome}
+        currentMonth={currentMonth}
+        onComplete={handleWizardComplete}
+        onCancel={() => setShowWizard(false)}
+      />
+    )
+  }
+
   async function handleSave() {
     setSaving(true)
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // Upsert all budget allocations
-    const upserts = Object.entries(allocations).map(([categoryId, allocated]) => ({
-      user_id: user.id,
-      category_id: categoryId,
-      month: currentMonth,
-      allocated,
-    }))
+    // Delete existing budgets for this month, then insert new ones
+    await supabase
+      .from('budgets')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .is('household_id', null)
 
-    await supabase.from('budgets').upsert(upserts, {
-      onConflict: 'user_id,household_id,category_id,month',
-    })
+    const inserts = Object.entries(allocations)
+      .filter(([_, allocated]) => allocated > 0)
+      .map(([categoryId, allocated]) => ({
+        user_id: user.id,
+        household_id: null,
+        category_id: categoryId,
+        month: currentMonth,
+        allocated,
+      }))
+
+    if (inserts.length > 0) {
+      await supabase.from('budgets').insert(inserts)
+    }
 
     setSaving(false)
   }
@@ -67,10 +110,11 @@ export function BudgetBuilder({
       {/* Income & Unallocated Header */}
       <div className="card bg-gradient-to-br from-sprout-50 to-bloom-50">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-sm text-gray-500">Monthly Income</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalIncome)}</p>
-          </div>
+          <IncomeEditor
+            incomeEntries={incomeEntries}
+            currentMonth={currentMonth}
+            onUpdate={() => router.refresh()}
+          />
           <div className="text-right">
             <p className="text-sm text-gray-500">To Allocate</p>
             <p className={`text-2xl font-bold ${unallocated > 0 ? 'text-coral-500' : unallocated < 0 ? 'text-red-500' : 'text-sprout-500'}`}>
@@ -94,6 +138,26 @@ export function BudgetBuilder({
           <p className="text-center text-sprout-600 font-medium text-sm mt-3">
             Every dollar has a job!
           </p>
+        )}
+
+        {/* Quick actions */}
+        {totalIncome > 0 && (
+          <div className="flex gap-2 mt-3 pt-3 border-t border-white/30">
+            <button
+              onClick={() => setShowWizard(true)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+            >
+              <Wand2 className="w-3 h-3" />
+              Step-by-Step Guide
+            </button>
+            <button
+              onClick={handleReset}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Reset
+            </button>
+          </div>
         )}
       </div>
 
