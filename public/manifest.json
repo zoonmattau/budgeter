@@ -1,10 +1,10 @@
 {
-  "name": "Bloom - Budget App",
-  "short_name": "Bloom",
-  "description": "Watch your savings grow with Bloom - a budgeting app that makes saving fun",
+  "name": "Seedling - Budget App",
+  "short_name": "Seedling",
+  "description": "Plant your financial future with Seedling - watch your savings grow",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#fdf4ff",
-  "theme_color": "#d946ef",
+  "background_color": "#f0fdf4",
+  "theme_color": "#22c55e",
   "orientation": "portrait"
 }

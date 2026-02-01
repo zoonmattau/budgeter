@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Check, Sparkles, Lightbulb, PiggyBank, Calendar } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Sparkles, Lightbulb, PiggyBank, Calendar, Plus, X, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { createClient } from '@/lib/supabase/client'
@@ -16,6 +16,22 @@ const TIME_FRAMES = [
 ] as const
 
 type TimeFrame = typeof TIME_FRAMES[number]['id']
+
+// Subscription frequency options
+const SUBSCRIPTION_FREQUENCIES = [
+  { id: 'weekly', label: 'Weekly', multiplier: 52 / 12 },
+  { id: 'monthly', label: 'Monthly', multiplier: 1 },
+  { id: 'yearly', label: 'Yearly', multiplier: 1 / 12 },
+] as const
+
+type SubscriptionFrequency = typeof SUBSCRIPTION_FREQUENCIES[number]['id']
+
+interface Subscription {
+  id: string
+  name: string
+  amount: number
+  frequency: SubscriptionFrequency
+}
 
 // Questions we ask the user - grouped by type
 // Each has clean round numbers for week/fortnight/month
@@ -150,11 +166,67 @@ export function BudgetWizard({
   const [currentTimeFrame, setCurrentTimeFrame] = useState<TimeFrame>('month')
   const [saving, setSaving] = useState(false)
 
+  // Subscription tracking
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [newSubName, setNewSubName] = useState('')
+  const [newSubAmount, setNewSubAmount] = useState('')
+  const [newSubFrequency, setNewSubFrequency] = useState<SubscriptionFrequency>('monthly')
+
+  // Leftover money allocation
+  const [showLeftoverStep, setShowLeftoverStep] = useState(false)
+  const [leftoverAllocations, setLeftoverAllocations] = useState<Record<string, number>>({})
+
+  // Leftover allocation options
+  const LEFTOVER_OPTIONS = [
+    {
+      id: 'emergency',
+      name: 'Emergency Fund',
+      icon: '🛡️',
+      color: '#3b82f6',
+      description: 'Money set aside for unexpected expenses like car repairs, medical bills, or job loss. Most experts recommend having 3-6 months of expenses saved up.',
+      tip: 'This is your financial safety net - aim to build this first!',
+    },
+    {
+      id: 'debt',
+      name: 'Pay Off Debt',
+      icon: '💳',
+      color: '#ef4444',
+      description: 'Extra payments towards credit cards, personal loans, or other debt. Paying more than the minimum helps you become debt-free faster and saves money on interest.',
+      tip: 'High-interest debt (like credit cards) should usually be paid off before investing.',
+    },
+    {
+      id: 'invest',
+      name: 'Investments',
+      icon: '📈',
+      color: '#22c55e',
+      description: 'Money that grows over time through shares, ETFs, super contributions, or property. Starting early means your money has more time to grow.',
+      tip: 'Even small amounts add up over time thanks to compound growth!',
+    },
+    {
+      id: 'fun',
+      name: 'Fun Money',
+      icon: '🎉',
+      color: '#d946ef',
+      description: 'Money for guilt-free spending on things that make you happy - hobbies, treats, experiences. Having some fun money helps you stick to your budget long-term.',
+      tip: 'Budgeting is about balance - it\'s okay to enjoy your money too!',
+    },
+  ]
+
   const supabase = createClient()
 
   const currentQuestion = BUDGET_QUESTIONS[currentStep]
+  const isSubscriptionStep = currentQuestion?.id === 'subscriptions'
   const isQuestionsComplete = currentStep >= BUDGET_QUESTIONS.length
-  const progress = (currentStep / BUDGET_QUESTIONS.length) * 100
+  const progress = (currentStep / (BUDGET_QUESTIONS.length + 1)) * 100 // +1 for leftover step
+
+  // Calculate leftover allocations total
+  const leftoverAllocated = Object.values(leftoverAllocations).reduce((sum, v) => sum + v, 0)
+
+  // Calculate total monthly subscription cost
+  const subscriptionMonthlyTotal = subscriptions.reduce((sum, sub) => {
+    const freq = SUBSCRIPTION_FREQUENCIES.find(f => f.id === sub.frequency)
+    return sum + Math.round(sub.amount * (freq?.multiplier || 1))
+  }, 0)
 
   // Calculate totals
   const totalFixed = BUDGET_QUESTIONS
@@ -170,6 +242,23 @@ export function BudgetWizard({
   const savingsRate = totalIncome > 0 ? (remaining / totalIncome) * 100 : 0
 
   function handleNext() {
+    // Special handling for subscriptions step
+    if (isSubscriptionStep) {
+      setAnswers(prev => ({ ...prev, subscriptions: subscriptionMonthlyTotal }))
+      // If this is the last question and there's leftover money, show leftover step
+      const isLastQuestion = currentStep === BUDGET_QUESTIONS.length - 1
+      if (isLastQuestion) {
+        // Calculate remaining after subscriptions
+        const newTotal = Object.entries(answers).reduce((sum, [, val]) => sum + (val || 0), 0) + subscriptionMonthlyTotal
+        const newRemaining = totalIncome - newTotal
+        if (newRemaining > 0) {
+          setShowLeftoverStep(true)
+        }
+      }
+      setCurrentStep(prev => prev + 1)
+      return
+    }
+
     const rawAmount = parseFloat(currentAmount) || 0
     // Convert to monthly amount
     const timeFrame = TIME_FRAMES.find(t => t.id === currentTimeFrame)
@@ -179,6 +268,17 @@ export function BudgetWizard({
     }
     setCurrentAmount('')
     setCurrentTimeFrame('month')
+
+    // Check if this is the last question and there's leftover money
+    const isLastQuestion = currentStep === BUDGET_QUESTIONS.length - 1
+    if (isLastQuestion) {
+      // Calculate remaining with the new amount
+      const newTotal = Object.entries(answers).reduce((sum, [, val]) => sum + (val || 0), 0) + monthlyAmount
+      const newRemaining = totalIncome - newTotal
+      if (newRemaining > 0) {
+        setShowLeftoverStep(true)
+      }
+    }
     setCurrentStep(prev => prev + 1)
   }
 
@@ -198,9 +298,60 @@ export function BudgetWizard({
   }
 
   function handleSkip() {
+    if (isSubscriptionStep) {
+      setSubscriptions([])
+    }
     setCurrentAmount('')
     setCurrentTimeFrame('month')
     setCurrentStep(prev => prev + 1)
+  }
+
+  // Subscription management functions
+  function addSubscription(name: string, amount: number, frequency: SubscriptionFrequency) {
+    const newSub: Subscription = {
+      id: Date.now().toString(),
+      name,
+      amount,
+      frequency,
+    }
+    setSubscriptions(prev => [...prev, newSub])
+  }
+
+  function removeSubscription(id: string) {
+    setSubscriptions(prev => prev.filter(s => s.id !== id))
+  }
+
+  function handleAddCustomSubscription() {
+    if (!newSubName.trim() || !newSubAmount) return
+    addSubscription(newSubName.trim(), parseFloat(newSubAmount), newSubFrequency)
+    setNewSubName('')
+    setNewSubAmount('')
+    setNewSubFrequency('monthly')
+  }
+
+  function handleLeftoverChange(id: string, value: string) {
+    const num = parseFloat(value) || 0
+    setLeftoverAllocations(prev => ({ ...prev, [id]: num }))
+  }
+
+  function handleLeftoverQuickAllocate(id: string) {
+    // Put all remaining leftover into this category
+    const currentlyAllocated = Object.entries(leftoverAllocations)
+      .filter(([key]) => key !== id)
+      .reduce((sum, [, val]) => sum + val, 0)
+    const availableToAllocate = remaining - currentlyAllocated
+    if (availableToAllocate > 0) {
+      setLeftoverAllocations(prev => ({ ...prev, [id]: Math.max(0, availableToAllocate) }))
+    }
+  }
+
+  function handleLeftoverNext() {
+    setShowLeftoverStep(false)
+  }
+
+  function handleLeftoverBack() {
+    setShowLeftoverStep(false)
+    setCurrentStep(BUDGET_QUESTIONS.length - 1)
   }
 
   async function handleSave() {
@@ -339,6 +490,113 @@ export function BudgetWizard({
     }
   }
 
+  // Leftover money allocation step
+  if (isQuestionsComplete && showLeftoverStep && remaining > 0) {
+    const leftoverRemaining = remaining - leftoverAllocated
+
+    return (
+      <div className="space-y-6">
+        {/* Progress bar */}
+        <div>
+          <div className="flex justify-between text-sm text-gray-500 mb-2">
+            <span>Almost done!</span>
+            <span>{formatCurrency(leftoverRemaining)} to allocate</span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-sprout-500 transition-all duration-300"
+              style={{ width: `${(leftoverAllocated / remaining) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Header */}
+        <div className="card bg-gradient-to-br from-sprout-50 to-bloom-50">
+          <div className="text-center">
+            <div className="w-14 h-14 rounded-full bg-white/50 flex items-center justify-center mx-auto mb-3">
+              <PiggyBank className="w-7 h-7 text-sprout-600" />
+            </div>
+            <h2 className="font-display text-xl font-bold text-gray-900 mb-2">
+              You have {formatCurrency(remaining)} left over!
+            </h2>
+            <p className="text-sm text-gray-600">
+              That&apos;s great news! Let&apos;s decide what to do with it. You can split it between different options or put it all in one place.
+            </p>
+          </div>
+        </div>
+
+        {/* Allocation options */}
+        <div className="space-y-4">
+          {LEFTOVER_OPTIONS.map((option) => {
+            const allocated = leftoverAllocations[option.id] || 0
+            const isSelected = allocated > 0
+
+            return (
+              <div
+                key={option.id}
+                className={`card transition-all ${isSelected ? 'ring-2 ring-sprout-400 ring-offset-2' : ''}`}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <span className="text-2xl">{option.icon}</span>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900">{option.name}</h3>
+                    <p className="text-sm text-gray-500 mt-1">{option.description}</p>
+                    <p className="text-xs text-sprout-600 mt-2 italic">{option.tip}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={remaining}
+                        value={allocated || ''}
+                        onChange={(e) => handleLeftoverChange(option.id, e.target.value)}
+                        placeholder="0"
+                        className="input pl-7 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleLeftoverQuickAllocate(option.id)}
+                    className="px-3 py-2 text-xs font-medium bg-gray-100 hover:bg-sprout-100 text-gray-600 hover:text-sprout-700 rounded-lg transition-colors"
+                  >
+                    All here
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Unallocated warning */}
+        {leftoverRemaining > 0 && (
+          <div className="p-3 bg-amber-50 rounded-xl text-sm text-amber-700">
+            <strong>Heads up:</strong> You still have {formatCurrency(leftoverRemaining)} to allocate. Any unallocated amount will go into general savings.
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex gap-3">
+          <button onClick={handleLeftoverBack} className="btn-secondary">
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+          <button
+            onClick={handleLeftoverNext}
+            className="btn-primary flex-1"
+          >
+            Continue to Summary
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // Summary & recommendations step
   if (isQuestionsComplete) {
     // Generate insights based on their spending
@@ -461,20 +719,57 @@ export function BudgetWizard({
               </div>
             ))}
             {remaining > 0 && (
-              <div className="flex justify-between items-center py-2 pt-3 border-t border-gray-200">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-sprout-500" />
-                  <span className="text-sprout-600 font-medium">Savings</span>
+              <>
+                <div className="pt-3 border-t border-gray-200">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Leftover Money</p>
                 </div>
-                <span className="font-bold text-sprout-600">{formatCurrency(remaining)}</span>
-              </div>
+                {leftoverAllocated > 0 ? (
+                  <>
+                    {LEFTOVER_OPTIONS.filter(opt => leftoverAllocations[opt.id] > 0).map(opt => (
+                      <div key={opt.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
+                        <div className="flex items-center gap-2">
+                          <span>{opt.icon}</span>
+                          <span className="text-gray-600">{opt.name}</span>
+                        </div>
+                        <span className="font-medium text-gray-900">{formatCurrency(leftoverAllocations[opt.id])}</span>
+                      </div>
+                    ))}
+                    {remaining - leftoverAllocated > 0 && (
+                      <div className="flex justify-between items-center py-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-sprout-500" />
+                          <span className="text-sprout-600 font-medium">Unallocated Savings</span>
+                        </div>
+                        <span className="font-bold text-sprout-600">{formatCurrency(remaining - leftoverAllocated)}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex justify-between items-center py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-sprout-500" />
+                      <span className="text-sprout-600 font-medium">Savings</span>
+                    </div>
+                    <span className="font-bold text-sprout-600">{formatCurrency(remaining)}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex gap-3">
-          <button onClick={handleBack} className="btn-secondary">
+          <button
+            onClick={() => {
+              if (remaining > 0) {
+                setShowLeftoverStep(true)
+              } else {
+                handleBack()
+              }
+            }}
+            className="btn-secondary"
+          >
             <ArrowLeft className="w-4 h-4" />
             Back
           </button>
@@ -485,6 +780,145 @@ export function BudgetWizard({
           >
             {saving ? 'Saving...' : 'Save My Budget'}
             <Check className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Subscription step - special UI
+  if (isSubscriptionStep) {
+    return (
+      <div className="space-y-6">
+        {/* Progress bar */}
+        <div>
+          <div className="flex justify-between text-sm text-gray-500 mb-2">
+            <span>Question {currentStep + 1} of {BUDGET_QUESTIONS.length}</span>
+            <span>{formatCurrency(remaining)} left</span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-bloom-500 transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Subscription header */}
+        <div className="card">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
+            style={{ backgroundColor: `${currentQuestion.color}20` }}
+          >
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: currentQuestion.color }}
+            >
+              <span className="text-white text-sm">$</span>
+            </div>
+          </div>
+          <h2 className="font-display text-lg font-bold text-gray-900 text-center mb-2">
+            What subscriptions do you pay for?
+          </h2>
+          <p className="text-sm text-gray-500 text-center mb-4">
+            Add each subscription below. We&apos;ll calculate your monthly total.
+          </p>
+
+          {/* Current subscriptions list */}
+          {subscriptions.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {subscriptions.map((sub) => {
+                const freq = SUBSCRIPTION_FREQUENCIES.find(f => f.id === sub.frequency)
+                const monthly = Math.round(sub.amount * (freq?.multiplier || 1))
+                return (
+                  <div key={sub.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                    <div>
+                      <p className="font-medium text-gray-900">{sub.name}</p>
+                      <p className="text-xs text-gray-500">
+                        ${sub.amount} {sub.frequency} = {formatCurrency(monthly)}/mo
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => removeSubscription(sub.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )
+              })}
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                <span className="font-medium text-gray-700">Monthly Total</span>
+                <span className="font-bold text-teal-600">{formatCurrency(subscriptionMonthlyTotal)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Add subscription */}
+          <div>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={newSubName}
+                onChange={(e) => setNewSubName(e.target.value)}
+                placeholder="Subscription name"
+                className="input"
+              />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <CurrencyInput
+                    value={newSubAmount}
+                    onChange={setNewSubAmount}
+                    placeholder="Amount"
+                  />
+                </div>
+                <select
+                  value={newSubFrequency}
+                  onChange={(e) => setNewSubFrequency(e.target.value as SubscriptionFrequency)}
+                  className="input w-28"
+                >
+                  {SUBSCRIPTION_FREQUENCIES.map((f) => (
+                    <option key={f.id} value={f.id}>{f.label}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={handleAddCustomSubscription}
+                disabled={!newSubName.trim() || !newSubAmount}
+                className="w-full py-2 px-3 rounded-xl text-sm font-medium bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                Add Subscription
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div className="flex gap-3">
+          {currentStep > 0 ? (
+            <button onClick={handleBack} className="btn-secondary">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          ) : (
+            <button onClick={onCancel} className="btn-secondary">
+              Cancel
+            </button>
+          )}
+
+          <button
+            onClick={handleSkip}
+            className="btn-ghost flex-1"
+          >
+            Skip
+          </button>
+
+          <button
+            onClick={handleNext}
+            className="btn-primary flex-1"
+          >
+            Next
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>

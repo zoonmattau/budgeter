@@ -40,7 +40,7 @@ export function CategoryChip({ name, color, icon, size = 'md', showLabel = false
         />
       </div>
       {showLabel && (
-        <span className="text-xs text-gray-600 font-medium truncate max-w-[60px]">
+        <span className="text-[10px] text-gray-600 font-medium text-center leading-tight line-clamp-2 w-full break-words">
           {name}
         </span>
       )}

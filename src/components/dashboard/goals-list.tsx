@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { CreditCard } from 'lucide-react'
 import { PlantVisual } from '@/components/goals/plant-visual'
 import { LikelihoodBadge } from '@/components/goals/likelihood-badge'
 import { formatCurrency, calculateLikelihood } from '@/lib/utils'
@@ -35,6 +36,8 @@ export function GoalsList({ goals }: GoalsListProps) {
           ? (goal.current_amount / goal.target_amount) * 100
           : 0
         const likelihood = calculateLikelihood(goal)
+        const isDebtPayoff = goal.goal_type === 'debt_payoff'
+        const remainingDebt = goal.target_amount - Number(goal.current_amount)
 
         return (
           <Link
@@ -42,9 +45,15 @@ export function GoalsList({ goals }: GoalsListProps) {
             href={`/goals/${goal.id}`}
             className="card-hover flex items-center gap-4"
           >
-            {/* Plant Visual */}
+            {/* Visual */}
             <div className="w-16 h-16 flex-shrink-0">
-              <PlantVisual progress={progress} size="sm" />
+              {isDebtPayoff ? (
+                <div className="w-full h-full rounded-2xl bg-red-100 flex items-center justify-center">
+                  <CreditCard className="w-8 h-8 text-red-500" />
+                </div>
+              ) : (
+                <PlantVisual progress={progress} size="sm" />
+              )}
             </div>
 
             {/* Goal Info */}
@@ -55,19 +64,34 @@ export function GoalsList({ goals }: GoalsListProps) {
               </div>
 
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-bloom-600 font-semibold">
-                  {formatCurrency(goal.current_amount)}
-                </span>
-                <span className="text-gray-400">of</span>
-                <span className="text-gray-600">
-                  {formatCurrency(goal.target_amount)}
-                </span>
+                {isDebtPayoff ? (
+                  <>
+                    <span className="text-red-600 font-semibold">
+                      {formatCurrency(remainingDebt)}
+                    </span>
+                    <span className="text-gray-400">remaining</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-bloom-600 font-semibold">
+                      {formatCurrency(goal.current_amount)}
+                    </span>
+                    <span className="text-gray-400">of</span>
+                    <span className="text-gray-600">
+                      {formatCurrency(goal.target_amount)}
+                    </span>
+                  </>
+                )}
               </div>
 
               {/* Mini progress bar */}
               <div className="h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-sprout-400 to-sprout-500 rounded-full transition-all duration-500"
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    isDebtPayoff
+                      ? 'bg-gradient-to-r from-red-400 to-red-500'
+                      : 'bg-gradient-to-r from-sprout-400 to-sprout-500'
+                  }`}
                   style={{ width: `${Math.min(progress, 100)}%` }}
                 />
               </div>

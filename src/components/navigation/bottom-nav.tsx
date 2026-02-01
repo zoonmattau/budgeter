@@ -8,7 +8,7 @@ import {
   Receipt,
   Wallet,
   Target,
-  Settings,
+  TrendingUp,
 } from 'lucide-react'
 
 const navItems = [
@@ -16,7 +16,7 @@ const navItems = [
   { href: '/transactions', label: 'Transactions', icon: Receipt },
   { href: '/budget', label: 'Budget', icon: Wallet },
   { href: '/goals', label: 'Goals', icon: Target },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/net-worth', label: 'Net Worth', icon: TrendingUp },
 ]
 
 export function BottomNav() {

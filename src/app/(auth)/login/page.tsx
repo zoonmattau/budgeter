@@ -75,7 +75,7 @@ function LoginForm() {
         </p>
         <button
           onClick={() => setMagicLinkSent(false)}
-          className="text-bloom-600 hover:text-bloom-700 text-sm font-medium"
+          className="text-sprout-600 hover:text-sprout-700 text-sm font-medium"
         >
           Use a different email
         </button>
@@ -148,7 +148,7 @@ function LoginForm() {
 
       <p className="text-center text-sm text-gray-600 mt-6">
         Don&apos;t have an account?{' '}
-        <Link href="/signup" className="text-bloom-600 hover:text-bloom-700 font-medium">
+        <Link href="/signup" className="text-sprout-600 hover:text-sprout-700 font-medium">
           Sign up
         </Link>
       </p>

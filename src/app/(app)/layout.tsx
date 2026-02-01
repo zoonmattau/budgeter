@@ -28,7 +28,7 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen pb-20">
-      <TopBar profile={profile} />
+      <TopBar />
       <main className="px-4 py-4 max-w-lg mx-auto">
         {children}
       </main>

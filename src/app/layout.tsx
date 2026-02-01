@@ -13,8 +13,8 @@ const outfit = Outfit({
 })
 
 export const metadata: Metadata = {
-  title: 'Bloom - Watch Your Savings Grow',
-  description: 'A budgeting app that makes saving fun. Set goals, track spending, and watch your financial garden flourish.',
+  title: 'Seedling - Plant Your Financial Future',
+  description: 'A budgeting app that helps your wealth grow. Set goals, track spending, and watch your savings sprout.',
   manifest: '/manifest.json',
 }
 
@@ -22,7 +22,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#d946ef',
+  themeColor: '#22c55e',
 }
 
 export default function RootLayout({

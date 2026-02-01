@@ -4,9 +4,9 @@ import { GoalsList } from '@/components/dashboard/goals-list'
 import { UpcomingBills } from '@/components/dashboard/upcoming-bills'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
-import { ActiveChallenge } from '@/components/dashboard/active-challenge'
 import { QuickLinks } from '@/components/dashboard/quick-links'
 import { SpendingSnapshot } from '@/components/dashboard/spending-snapshot'
+import { NetWorthCard } from '@/components/dashboard/net-worth-card'
 import { format, startOfMonth } from 'date-fns'
 
 export default async function DashboardPage() {
@@ -24,9 +24,9 @@ export default async function DashboardPage() {
     { data: transactions },
     { data: goals },
     { data: bills },
-    { data: challenges },
     { data: expenseCategories },
     { data: incomeCategories },
+    { data: accounts },
   ] = await Promise.all([
     supabase
       .from('income_entries')
@@ -59,13 +59,6 @@ export default async function DashboardPage() {
       .order('next_due', { ascending: true })
       .limit(4),
     supabase
-      .from('challenges')
-      .select('*, goals(*)')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .limit(1)
-      .single(),
-    supabase
       .from('categories')
       .select('*')
       .eq('user_id', user.id)
@@ -75,6 +68,10 @@ export default async function DashboardPage() {
       .select('*')
       .eq('user_id', user.id)
       .eq('type', 'income'),
+    supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', user.id),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
@@ -82,6 +79,50 @@ export default async function DashboardPage() {
   const totalSpent = transactions
     ?.filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + Number(t.amount), 0) || 0
+
+  // Calculate net worth
+  const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+  const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+  const netWorth = totalAssets - totalLiabilities
+
+  // Get credit cards for expense linking
+  const creditCards = accounts?.filter(a => a.type === 'credit' || a.type === 'credit_card') || []
+
+  // Create/update net worth snapshot if user has accounts
+  if (accounts && accounts.length > 0) {
+    await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+  }
+
+  // Auto-complete debt payoff goals when linked account balance reaches 0
+  if (goals && accounts) {
+    const debtPayoffGoals = goals.filter(g => g.goal_type === 'debt_payoff' && g.linked_account_id)
+    for (const goal of debtPayoffGoals) {
+      const linkedAccount = accounts.find(a => a.id === goal.linked_account_id)
+      if (linkedAccount && linkedAccount.balance <= 0) {
+        // Auto-complete this goal
+        await supabase
+          .from('goals')
+          .update({
+            status: 'completed',
+            current_amount: goal.target_amount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', goal.id)
+      } else if (linkedAccount) {
+        // Update current_amount to reflect how much has been paid off
+        const paidOff = Math.max(0, goal.target_amount - linkedAccount.balance)
+        if (paidOff !== goal.current_amount) {
+          await supabase
+            .from('goals')
+            .update({
+              current_amount: paidOff,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', goal.id)
+        }
+      }
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -102,16 +143,18 @@ export default async function DashboardPage() {
         totalSpent={totalSpent}
       />
 
+      {/* Net Worth Card */}
+      <NetWorthCard
+        netWorth={netWorth}
+        totalAssets={totalAssets}
+        totalLiabilities={totalLiabilities}
+      />
+
       {/* Quick Links */}
       <QuickLinks />
 
       {/* Spending Snapshot */}
       <SpendingSnapshot transactions={transactions || []} />
-
-      {/* Active Challenge */}
-      {challenges && (
-        <ActiveChallenge challenge={challenges} />
-      )}
 
       {/* Goals Progress */}
       <section>
@@ -147,7 +190,7 @@ export default async function DashboardPage() {
       </section>
 
       {/* Quick Add FAB */}
-      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={creditCards} />
     </div>
   )
 }

@@ -15,7 +15,10 @@ export interface Database {
           display_name: string | null
           avatar_url: string | null
           currency: string
+          mobile: string | null
           onboarding_completed: boolean
+          friend_code: string | null
+          basiq_user_id: string | null
           created_at: string
           updated_at: string
         }
@@ -24,7 +27,10 @@ export interface Database {
           display_name?: string | null
           avatar_url?: string | null
           currency?: string
+          mobile?: string | null
           onboarding_completed?: boolean
+          friend_code?: string | null
+          basiq_user_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -33,7 +39,10 @@ export interface Database {
           display_name?: string | null
           avatar_url?: string | null
           currency?: string
+          mobile?: string | null
           onboarding_completed?: boolean
+          friend_code?: string | null
+          basiq_user_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -100,10 +109,18 @@ export interface Database {
           user_id: string
           household_id: string | null
           name: string
-          type: 'cash' | 'bank' | 'credit' | 'investment' | 'debt'
+          type: 'cash' | 'bank' | 'credit' | 'investment' | 'debt' | 'loan' | 'credit_card'
           balance: number
           is_asset: boolean
           institution: string | null
+          interest_rate: number | null
+          interest_free_days: number | null
+          due_date: number | null
+          minimum_payment: number | null
+          original_amount: number | null
+          payoff_date: string | null
+          payment_frequency: 'weekly' | 'fortnightly' | 'monthly' | null
+          basiq_account_id: string | null
           created_at: string
           updated_at: string
         }
@@ -112,10 +129,18 @@ export interface Database {
           user_id: string
           household_id?: string | null
           name: string
-          type: 'cash' | 'bank' | 'credit' | 'investment' | 'debt'
+          type: 'cash' | 'bank' | 'credit' | 'investment' | 'debt' | 'loan' | 'credit_card'
           balance?: number
           is_asset?: boolean
           institution?: string | null
+          interest_rate?: number | null
+          interest_free_days?: number | null
+          due_date?: number | null
+          minimum_payment?: number | null
+          original_amount?: number | null
+          payoff_date?: string | null
+          payment_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          basiq_account_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -124,10 +149,18 @@ export interface Database {
           user_id?: string
           household_id?: string | null
           name?: string
-          type?: 'cash' | 'bank' | 'credit' | 'investment' | 'debt'
+          type?: 'cash' | 'bank' | 'credit' | 'investment' | 'debt' | 'loan' | 'credit_card'
           balance?: number
           is_asset?: boolean
           institution?: string | null
+          interest_rate?: number | null
+          interest_free_days?: number | null
+          due_date?: number | null
+          minimum_payment?: number | null
+          original_amount?: number | null
+          payoff_date?: string | null
+          payment_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          basiq_account_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -341,6 +374,8 @@ export interface Database {
           deadline: string | null
           status: 'active' | 'completed' | 'cancelled'
           visual_type: 'plant' | 'jar' | 'blocks'
+          goal_type: 'savings' | 'debt_payoff'
+          linked_account_id: string | null
           created_at: string
           updated_at: string
         }
@@ -356,6 +391,8 @@ export interface Database {
           deadline?: string | null
           status?: 'active' | 'completed' | 'cancelled'
           visual_type?: 'plant' | 'jar' | 'blocks'
+          goal_type?: 'savings' | 'debt_payoff'
+          linked_account_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -371,6 +408,8 @@ export interface Database {
           deadline?: string | null
           status?: 'active' | 'completed' | 'cancelled'
           visual_type?: 'plant' | 'jar' | 'blocks'
+          goal_type?: 'savings' | 'debt_payoff'
+          linked_account_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -507,6 +546,90 @@ export interface Database {
           longest_streak?: number
           goals_completed?: number
           challenges_won?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      net_worth_snapshots: {
+        Row: {
+          id: string
+          user_id: string
+          total_assets: number
+          total_liabilities: number
+          net_worth: number
+          snapshot_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          total_assets: number
+          total_liabilities: number
+          net_worth: number
+          snapshot_date: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          total_assets?: number
+          total_liabilities?: number
+          net_worth?: number
+          snapshot_date?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      friendships: {
+        Row: {
+          id: string
+          requester_id: string
+          addressee_id: string
+          status: 'pending' | 'accepted' | 'rejected'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          requester_id: string
+          addressee_id: string
+          status?: 'pending' | 'accepted' | 'rejected'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          requester_id?: string
+          addressee_id?: string
+          status?: 'pending' | 'accepted' | 'rejected'
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_preferences: {
+        Row: {
+          id: string
+          user_id: string
+          friends_leaderboard_visible: boolean
+          global_leaderboard_visible: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          friends_leaderboard_visible?: boolean
+          global_leaderboard_visible?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          friends_leaderboard_visible?: boolean
+          global_leaderboard_visible?: boolean
+          created_at?: string
           updated_at?: string
         }
         Relationships: []

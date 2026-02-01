@@ -1,13 +1,15 @@
-# Bloom - Budget App
+# Seedling - Budget App
 
-A modern, gamified budgeting app that helps young professionals take control of their finances and watch their savings grow.
+A modern, gamified budgeting app that helps you plant your financial future and watch your savings grow.
 
 ## Features
 
 - **Zero-Based Budgeting**: Give every dollar a job
 - **Savings Goals**: Set goals with visual plant growth tracking
 - **Bill Tracking**: Never miss a payment with upcoming bill reminders
-- **Net Worth Tracking**: Monitor assets and liabilities
+- **Net Worth Tracking**: Monitor assets and liabilities with history charts
+- **Social Leaderboards**: Compare net worth with friends and globally
+- **Friend System**: Add friends via codes and compete together
 - **Gamification**: Challenges, streaks, and achievements
 - **Household Support**: Personal and shared budgets
 

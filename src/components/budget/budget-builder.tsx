@@ -69,19 +69,31 @@ export function BudgetBuilder({
     )
   }
 
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
   async function handleSave() {
     setSaving(true)
+    setSaveSuccess(false)
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      setSaving(false)
+      return
+    }
 
     // Delete existing budgets for this month, then insert new ones
-    await supabase
+    const { error: deleteError } = await supabase
       .from('budgets')
       .delete()
       .eq('user_id', user.id)
       .eq('month', currentMonth)
       .is('household_id', null)
+
+    if (deleteError) {
+      console.error('Error deleting budgets:', deleteError)
+      setSaving(false)
+      return
+    }
 
     const inserts = Object.entries(allocations)
       .filter(([_, allocated]) => allocated > 0)
@@ -94,10 +106,19 @@ export function BudgetBuilder({
       }))
 
     if (inserts.length > 0) {
-      await supabase.from('budgets').insert(inserts)
+      const { error: insertError } = await supabase.from('budgets').insert(inserts)
+      if (insertError) {
+        console.error('Error inserting budgets:', insertError)
+        setSaving(false)
+        return
+      }
     }
 
     setSaving(false)
+    setSaveSuccess(true)
+    // Hide success message after 2 seconds
+    setTimeout(() => setSaveSuccess(false), 2000)
+    router.refresh()
   }
 
   function handleAllocationChange(categoryId: string, value: string) {
@@ -219,6 +240,11 @@ export function BudgetBuilder({
       </div>
 
       {/* Save Button */}
+      {saveSuccess && (
+        <div className="p-3 bg-sprout-50 text-sprout-700 rounded-xl text-sm text-center font-medium">
+          Budget saved successfully!
+        </div>
+      )}
       <button
         onClick={handleSave}
         disabled={saving}

@@ -19,12 +19,18 @@ export default function AuthLayout({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                d="M12 19V6m0 0c-2 0-4 1.5-4 4s2 4 4 4m0-8c2 0 4 1.5 4 4s-2 4-4 4"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 22c-1 0-2-.5-2-1.5S11 19 12 19s2 .5 2 1.5-1 1.5-2 1.5z"
               />
             </svg>
           </div>
-          <h1 className="font-display text-3xl font-bold text-gray-900">Bloom</h1>
-          <p className="text-gray-500 mt-1">Watch your savings grow</p>
+          <h1 className="font-display text-3xl font-bold text-gray-900">Seedling</h1>
+          <p className="text-gray-500 mt-1">Plant your financial future</p>
         </div>
         {children}
       </div>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, ArrowLeft, Sparkles } from 'lucide-react'
+import { ArrowRight, ArrowLeft, Sparkles, Phone } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { CurrencyInput } from '@/components/ui/currency-input'
@@ -15,6 +15,8 @@ const STEPS: Step[] = ['welcome', 'income', 'household', 'goal', 'complete']
 export default function OnboardingPage() {
   const router = useRouter()
   const [step, setStep] = useState<Step>('welcome')
+  const [displayName, setDisplayName] = useState('')
+  const [mobile, setMobile] = useState('')
   const [income, setIncome] = useState('')
   const [incomeSource, setIncomeSource] = useState('Salary')
   const [householdId, setHouseholdId] = useState<string | null>(null)
@@ -76,10 +78,20 @@ export default function OnboardingPage() {
         }
       }
 
-      // Mark onboarding complete
+      // Update profile with name, mobile, and mark onboarding complete
+      const profileUpdate: { onboarding_completed: boolean; display_name?: string; mobile?: string } = {
+        onboarding_completed: true,
+      }
+      if (displayName) profileUpdate.display_name = displayName
+      if (mobile) {
+        // Format mobile number
+        const formattedMobile = mobile.startsWith('+') ? mobile : `+61${mobile.replace(/^0/, '')}`
+        profileUpdate.mobile = formattedMobile
+      }
+
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ onboarding_completed: true })
+        .update(profileUpdate)
         .eq('id', user.id)
 
       if (profileError) {
@@ -131,7 +143,13 @@ export default function OnboardingPage() {
       {/* Step content */}
       <div className="flex-1">
         {step === 'welcome' && (
-          <WelcomeStep onNext={() => setStep('income')} />
+          <WelcomeStep
+            displayName={displayName}
+            setDisplayName={setDisplayName}
+            mobile={mobile}
+            setMobile={setMobile}
+            onNext={() => setStep('income')}
+          />
         )}
 
         {step === 'income' && (
@@ -179,38 +197,71 @@ export default function OnboardingPage() {
   )
 }
 
-function WelcomeStep({ onNext }: { onNext: () => void }) {
+function WelcomeStep({
+  displayName,
+  setDisplayName,
+  mobile,
+  setMobile,
+  onNext,
+}: {
+  displayName: string
+  setDisplayName: (v: string) => void
+  mobile: string
+  setMobile: (v: string) => void
+  onNext: () => void
+}) {
   return (
-    <div className="text-center">
-      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-bloom-100 to-sprout-100 flex items-center justify-center mx-auto mb-6">
-        <Sparkles className="w-12 h-12 text-bloom-500" />
+    <div>
+      <div className="text-center mb-6">
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-bloom-100 to-sprout-100 flex items-center justify-center mx-auto mb-4">
+          <Sparkles className="w-10 h-10 text-bloom-500" />
+        </div>
+
+        <h1 className="font-display text-2xl font-bold text-gray-900 mb-2">
+          Welcome to Seedling
+        </h1>
+
+        <p className="text-gray-500 text-sm">
+          Let&apos;s get you set up in just a few steps
+        </p>
       </div>
 
-      <h1 className="font-display text-3xl font-bold text-gray-900 mb-3">
-        Welcome to Bloom
-      </h1>
-
-      <p className="text-gray-600 mb-8 max-w-sm mx-auto">
-        Let&apos;s set up your budget in just a few steps. We&apos;ll help you give every dollar a job.
-      </p>
-
-      <div className="space-y-3 text-left max-w-xs mx-auto mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-sprout-100 flex items-center justify-center text-sprout-600 font-semibold text-sm">1</div>
-          <p className="text-gray-700">Set your monthly income</p>
+      <div className="space-y-4 mb-8">
+        <div>
+          <label className="label">What should we call you?</label>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Your name"
+            className="input"
+            autoFocus
+          />
         </div>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-sprout-100 flex items-center justify-center text-sprout-600 font-semibold text-sm">2</div>
-          <p className="text-gray-700">Set up your household</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-sprout-100 flex items-center justify-center text-sprout-600 font-semibold text-sm">3</div>
-          <p className="text-gray-700">Create your first savings goal</p>
+
+        <div>
+          <label className="label">Mobile number (for bank connection)</label>
+          <div className="flex gap-2">
+            <div className="flex items-center gap-1 px-3 py-2 bg-gray-100 rounded-xl text-gray-600">
+              <Phone className="w-4 h-4" />
+              +61
+            </div>
+            <input
+              type="tel"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value.replace(/\D/g, ''))}
+              placeholder="412 345 678"
+              className="flex-1 input"
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Optional - used when connecting your bank accounts later
+          </p>
         </div>
       </div>
 
       <button onClick={onNext} className="btn-primary w-full">
-        Get Started
+        Continue
         <ArrowRight className="w-4 h-4" />
       </button>
     </div>
@@ -315,7 +366,7 @@ function GoalStep({
         What are you saving for?
       </h1>
       <p className="text-gray-500 mb-6">
-        Set your first goal and watch your savings bloom!
+        Set your first goal and watch your savings grow!
       </p>
 
       {/* Quick suggestions */}

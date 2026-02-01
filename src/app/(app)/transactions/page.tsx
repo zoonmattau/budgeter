@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { TransactionsList } from '@/components/transactions/transactions-list'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
@@ -12,7 +14,7 @@ export default async function TransactionsPage() {
   const currentMonth = startOfMonth(new Date())
   const monthEnd = endOfMonth(new Date())
 
-  const [{ data: transactions }, { data: expenseCategories }, { data: incomeCategories }] = await Promise.all([
+  const [{ data: transactions }, { data: expenseCategories }, { data: incomeCategories }, { data: accounts }] = await Promise.all([
     supabase
       .from('transactions')
       .select('*, categories(*)')
@@ -30,6 +32,11 @@ export default async function TransactionsPage() {
       .select('*')
       .eq('user_id', user.id)
       .eq('type', 'income'),
+    supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('type', ['credit', 'credit_card']),
   ])
 
   const totalExpenses = transactions
@@ -42,9 +49,18 @@ export default async function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-gray-900">Transactions</h1>
-        <p className="text-gray-500 text-sm mt-1">{format(new Date(), 'MMMM yyyy')}</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-gray-900">Transactions</h1>
+          <p className="text-gray-500 text-sm mt-1">{format(new Date(), 'MMMM yyyy')}</p>
+        </div>
+        <Link
+          href="/import"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+        >
+          <Sparkles className="w-4 h-4" />
+          Smart Import
+        </Link>
       </div>
 
       {/* Summary */}
@@ -66,7 +82,7 @@ export default async function TransactionsPage() {
       {/* Transactions List */}
       <TransactionsList transactions={transactions || []} />
 
-      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={accounts || []} />
     </div>
   )
 }
