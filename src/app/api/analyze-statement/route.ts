@@ -2,9 +2,36 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
+// Validate API key at startup
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.warn('Warning: ANTHROPIC_API_KEY is not set. Statement analysis will fail.')
+}
+
 const anthropic = new Anthropic()
 
+function extractJSON(text: string): unknown {
+  // Try to find JSON in code blocks first
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (codeBlockMatch) {
+    return JSON.parse(codeBlockMatch[1].trim())
+  }
+
+  // Find the first { and last } to extract the outermost JSON object
+  const firstBrace = text.indexOf('{')
+  const lastBrace = text.lastIndexOf('}')
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error('No JSON object found in response')
+  }
+
+  return JSON.parse(text.slice(firstBrace, lastBrace + 1))
+}
+
 export async function POST(request: NextRequest) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'Statement analysis is not configured. Please set up ANTHROPIC_API_KEY.' }, { status: 503 })
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -99,17 +126,12 @@ ${content.slice(0, 50000)}`
     // Try to parse JSON from response
     let analysis
     try {
-      // Find JSON in the response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        analysis = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('No JSON found in response')
-      }
+      analysis = extractJSON(responseText)
     } catch (parseError) {
+      console.error('JSON parse error:', parseError)
       return NextResponse.json({
-        error: 'Failed to parse analysis',
-        raw: responseText
+        error: 'Failed to parse analysis. The AI response was not valid JSON.',
+        raw: responseText.slice(0, 500)
       }, { status: 500 })
     }
 

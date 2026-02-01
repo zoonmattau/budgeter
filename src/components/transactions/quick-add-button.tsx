@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -40,6 +41,7 @@ const RECURRING_SUGGESTIONS = [
 ]
 
 export function QuickAddButton({ expenseCategories, incomeCategories, creditCards = [] }: QuickAddButtonProps) {
+  const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [transactionType, setTransactionType] = useState<TransactionType>('expense')
   const [selectedCategory, setSelectedCategory] = useState<Tables<'categories'> | null>(null)
@@ -49,6 +51,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
 
   // Recurring transaction fields
   const [isRecurring, setIsRecurring] = useState(false)
@@ -67,6 +70,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
     setAmount('')
     setDescription('')
     setDate(format(new Date(), 'yyyy-MM-dd'))
+    setShowSuccess(false)
     setTransactionType('expense')
     setSelectedCardId(null)
     setIsRecurring(false)
@@ -135,7 +139,12 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
       return
     }
 
-    const user = (await supabase.auth.getUser()).data.user!
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      setLoading(false)
+      return
+    }
 
     // Create the transaction
     const { error } = await supabase.from('transactions').insert({
@@ -189,11 +198,16 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
     }
 
     if (!error) {
-      // Show brief success then close
+      // Show success state
+      setShowSuccess(true)
+      setLoading(false)
+
+      // Wait for user to see success, then close and refresh
       setTimeout(() => {
         handleClose()
-        window.location.reload()
-      }, billCreated ? 1500 : 300)
+        router.refresh()
+      }, 1500)
+      return
     }
 
     setLoading(false)
@@ -216,49 +230,73 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center">
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quick-add-title"
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={handleClose}
+        aria-label="Close modal"
       />
 
       {/* Sheet */}
       <div className="relative w-full max-w-lg bg-white rounded-t-3xl p-6 pb-24 animate-slide-up max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className={`font-display text-xl font-semibold ${isExpense ? 'text-gray-900' : 'text-sprout-700'}`}>
+          <h2 id="quick-add-title" className={`font-display text-xl font-semibold ${isExpense ? 'text-gray-900' : 'text-sprout-700'}`}>
             {isExpense ? 'Add Expense' : 'Add Income'}
           </h2>
           <button
             onClick={handleClose}
             className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            aria-label="Close"
           >
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
-        {/* Type Toggle */}
-        <div className="mb-5">
-          <TogglePills
-            options={[
-              { value: 'expense', label: 'Expense' },
-              { value: 'income', label: 'Income' },
-            ]}
-            value={transactionType}
-            onChange={handleTypeChange}
-            variant="expense-income"
-          />
-        </div>
-
-        {/* Bill Created Success */}
-        {billCreated && (
-          <div className="mb-4 p-3 bg-sprout-50 rounded-xl flex items-center gap-2 text-sprout-700">
-            <Calendar className="w-4 h-4" />
-            <span className="text-sm font-medium">Bill created! It'll appear in upcoming bills.</span>
+        {/* Success State */}
+        {showSuccess ? (
+          <div className="py-12 text-center">
+            <div className={`w-16 h-16 rounded-full ${isExpense ? 'bg-bloom-100' : 'bg-sprout-100'} flex items-center justify-center mx-auto mb-4`}>
+              <CheckCircle2 className={`w-8 h-8 ${isExpense ? 'text-bloom-600' : 'text-sprout-600'}`} />
+            </div>
+            <h3 className="font-display text-xl font-semibold text-gray-900 mb-2">
+              {isExpense ? 'Expense Added!' : 'Income Added!'}
+            </h3>
+            <p className="text-gray-500 text-sm">
+              {billCreated
+                ? 'Your transaction was saved and a recurring bill was created.'
+                : `Your ${isExpense ? 'expense' : 'income'} has been recorded.`}
+            </p>
           </div>
-        )}
+        ) : (
+          <>
+            {/* Type Toggle */}
+            <div className="mb-5">
+              <TogglePills
+                options={[
+                  { value: 'expense', label: 'Expense' },
+                  { value: 'income', label: 'Income' },
+                ]}
+                value={transactionType}
+                onChange={handleTypeChange}
+                variant="expense-income"
+              />
+            </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Bill Created Success */}
+            {billCreated && (
+              <div className="mb-4 p-3 bg-sprout-50 rounded-xl flex items-center gap-2 text-sprout-700">
+                <Calendar className="w-4 h-4" />
+                <span className="text-sm font-medium">Bill created! It'll appear in upcoming bills.</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
           {/* Quick Recurring Suggestions - for expenses only */}
           {isExpense && !selectedCategory && !amount && (
             <div>
@@ -509,6 +547,8 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             {loading ? 'Saving...' : isRecurring ? 'Save & Create Bill' : 'Save'}
           </button>
         </form>
+          </>
+        )}
       </div>
 
       <style jsx>{`

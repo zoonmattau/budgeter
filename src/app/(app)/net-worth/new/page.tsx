@@ -82,7 +82,10 @@ export default function NewAccountPage() {
     })
 
     if (!error) {
-      await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+      const { error: snapshotError } = await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+      if (snapshotError) {
+        console.error('Error creating net worth snapshot:', snapshotError)
+      }
       router.push('/net-worth')
       router.refresh()
     }

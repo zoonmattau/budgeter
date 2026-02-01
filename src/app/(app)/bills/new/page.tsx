@@ -27,6 +27,7 @@ export default function NewBillPage() {
   const [dueDay, setDueDay] = useState(new Date().getDate().toString())
   const [categoryId, setCategoryId] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -54,7 +55,9 @@ export default function NewBillPage() {
 
   function calculateNextDue(): string {
     const today = new Date()
-    const day = parseInt(dueDay) || 1
+    const parsedDay = parseInt(dueDay, 10)
+    // Clamp day to valid range (1-31)
+    const day = isNaN(parsedDay) ? 1 : Math.max(1, Math.min(31, parsedDay))
 
     let nextDue = new Date(today.getFullYear(), today.getMonth(), day)
 
@@ -84,29 +87,52 @@ export default function NewBillPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setError(null)
+
     if (!name || !amount || !categoryId) return
+
+    // Validate due day
+    const parsedDueDay = parseInt(dueDay, 10)
+    if (isNaN(parsedDueDay) || parsedDueDay < 1 || parsedDueDay > 31) {
+      setError('Please enter a valid due day (1-31)')
+      return
+    }
+
+    // Validate amount
+    const parsedAmount = parseFloat(amount)
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setError('Please enter a valid amount')
+      return
+    }
 
     setLoading(true)
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      setError('You must be logged in to add a bill')
+      setLoading(false)
+      return
+    }
 
-    const { error } = await supabase.from('bills').insert({
+    const { error: insertError } = await supabase.from('bills').insert({
       user_id: user.id,
       name,
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       frequency: frequency as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly',
-      due_day: parseInt(dueDay),
+      due_day: parsedDueDay,
       next_due: calculateNextDue(),
       category_id: categoryId,
     })
 
-    if (!error) {
-      router.push('/bills')
-      router.refresh()
+    if (insertError) {
+      setError('Failed to add bill. Please try again.')
+      console.error('Error adding bill:', insertError)
+      setLoading(false)
+      return
     }
 
-    setLoading(false)
+    router.push('/bills')
+    router.refresh()
   }
 
   return (
@@ -202,6 +228,12 @@ export default function NewBillPage() {
             ))}
           </div>
         </div>
+
+        {error && (
+          <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm">
+            {error}
+          </div>
+        )}
 
         <button
           type="submit"

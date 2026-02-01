@@ -90,38 +90,56 @@ export default async function DashboardPage() {
 
   // Create/update net worth snapshot if user has accounts
   if (accounts && accounts.length > 0) {
-    await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+    const { error: snapshotError } = await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+    if (snapshotError) {
+      console.error('Error creating net worth snapshot:', snapshotError)
+    }
   }
 
   // Auto-complete debt payoff goals when linked account balance reaches 0
+  // Use Promise.all for parallel updates and add error handling
   if (goals && accounts) {
     const debtPayoffGoals = goals.filter(g => g.goal_type === 'debt_payoff' && g.linked_account_id)
-    for (const goal of debtPayoffGoals) {
+    const updates = debtPayoffGoals.map(async (goal) => {
       const linkedAccount = accounts.find(a => a.id === goal.linked_account_id)
-      if (linkedAccount && linkedAccount.balance <= 0) {
+      if (!linkedAccount) return
+
+      const currentAmount = Number(goal.current_amount) || 0
+      const targetAmount = Number(goal.target_amount) || 0
+      const accountBalance = Number(linkedAccount.balance) || 0
+
+      if (accountBalance <= 0 && goal.status !== 'completed') {
         // Auto-complete this goal
-        await supabase
+        const { error } = await supabase
           .from('goals')
           .update({
             status: 'completed',
-            current_amount: goal.target_amount,
+            current_amount: targetAmount,
             updated_at: new Date().toISOString(),
           })
           .eq('id', goal.id)
-      } else if (linkedAccount) {
+          .eq('status', 'active') // Only update if still active (prevents race condition)
+
+        if (error) console.error('Error completing goal:', error)
+      } else if (accountBalance > 0) {
         // Update current_amount to reflect how much has been paid off
-        const paidOff = Math.max(0, goal.target_amount - linkedAccount.balance)
-        if (paidOff !== goal.current_amount) {
-          await supabase
+        const paidOff = Math.max(0, targetAmount - accountBalance)
+        // Only update if there's a meaningful difference (> $0.01)
+        if (Math.abs(paidOff - currentAmount) > 0.01) {
+          const { error } = await supabase
             .from('goals')
             .update({
               current_amount: paidOff,
               updated_at: new Date().toISOString(),
             })
             .eq('id', goal.id)
+
+          if (error) console.error('Error updating goal progress:', error)
         }
       }
-    }
+    })
+
+    await Promise.all(updates)
   }
 
   return (

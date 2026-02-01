@@ -48,6 +48,13 @@ export function BudgetBuilder({
   const isBalanced = Math.abs(unallocated) < 0.01
 
   function handleReset() {
+    const hasAllocations = Object.values(allocations).some(a => a > 0)
+    if (hasAllocations) {
+      const confirmed = window.confirm(
+        'Are you sure you want to reset all budget allocations? This will clear all category amounts.'
+      )
+      if (!confirmed) return
+    }
     setAllocations({})
   }
 
@@ -239,6 +246,16 @@ export function BudgetBuilder({
         })}
       </div>
 
+      {/* Over-allocation Warning */}
+      {unallocated < 0 && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+          <p className="font-medium">Over-allocated by {formatCurrency(Math.abs(unallocated))}</p>
+          <p className="text-xs mt-1 text-red-600">
+            Your budget exceeds your income. Consider reducing some allocations to avoid overspending.
+          </p>
+        </div>
+      )}
+
       {/* Save Button */}
       {saveSuccess && (
         <div className="p-3 bg-sprout-50 text-sprout-700 rounded-xl text-sm text-center font-medium">
@@ -250,7 +267,7 @@ export function BudgetBuilder({
         disabled={saving}
         className="btn-primary w-full"
       >
-        {saving ? 'Saving...' : 'Save Budget'}
+        {saving ? 'Saving...' : unallocated < 0 ? 'Save Anyway' : 'Save Budget'}
       </button>
     </div>
   )

@@ -1,0 +1,360 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { ArrowLeft, Trash2, Plus, Calendar, CreditCard, Target, CheckCircle2 } from 'lucide-react'
+import { format } from 'date-fns'
+import { createClient } from '@/lib/supabase/client'
+import { CurrencyInput } from '@/components/ui/currency-input'
+import { formatCurrency } from '@/lib/utils'
+import { PlantVisual } from './plant-visual'
+import type { Tables } from '@/lib/database.types'
+
+interface GoalEditFormProps {
+  goal: Tables<'goals'>
+  linkedAccount: Tables<'accounts'> | null
+}
+
+export function GoalEditForm({ goal, linkedAccount }: GoalEditFormProps) {
+  const router = useRouter()
+  const [name, setName] = useState(goal.name)
+  const [targetAmount, setTargetAmount] = useState(String(goal.target_amount))
+  const [currentAmount, setCurrentAmount] = useState(String(goal.current_amount))
+  const [deadline, setDeadline] = useState(goal.deadline || '')
+  const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [addAmount, setAddAmount] = useState('')
+  const [showAddFunds, setShowAddFunds] = useState(false)
+
+  const supabase = createClient()
+
+  const isDebtPayoff = goal.goal_type === 'debt_payoff'
+  const isCompleted = goal.status === 'completed'
+  const progress = Number(goal.target_amount) > 0
+    ? (Number(currentAmount) / Number(goal.target_amount)) * 100
+    : 0
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name || !targetAmount) return
+
+    setLoading(true)
+    setError(null)
+
+    const { error: updateError } = await supabase
+      .from('goals')
+      .update({
+        name,
+        target_amount: parseFloat(targetAmount),
+        current_amount: parseFloat(currentAmount),
+        deadline: deadline || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', goal.id)
+
+    if (updateError) {
+      setError('Failed to update goal. Please try again.')
+      setLoading(false)
+      return
+    }
+
+    router.push('/goals')
+    router.refresh()
+  }
+
+  async function handleAddFunds() {
+    if (!addAmount || parseFloat(addAmount) <= 0) return
+
+    setLoading(true)
+    const newAmount = parseFloat(currentAmount) + parseFloat(addAmount)
+
+    const { error: updateError } = await supabase
+      .from('goals')
+      .update({
+        current_amount: newAmount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', goal.id)
+
+    if (!updateError) {
+      setCurrentAmount(String(newAmount))
+      setAddAmount('')
+      setShowAddFunds(false)
+    }
+
+    setLoading(false)
+  }
+
+  async function handleMarkComplete() {
+    setLoading(true)
+
+    const { error: updateError } = await supabase
+      .from('goals')
+      .update({
+        status: 'completed',
+        current_amount: parseFloat(targetAmount),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', goal.id)
+
+    if (!updateError) {
+      router.push('/goals')
+      router.refresh()
+    }
+
+    setLoading(false)
+  }
+
+  async function handleReactivate() {
+    setLoading(true)
+
+    const { error: updateError } = await supabase
+      .from('goals')
+      .update({
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', goal.id)
+
+    if (!updateError) {
+      router.refresh()
+    }
+
+    setLoading(false)
+  }
+
+  async function handleDelete() {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${goal.name}"? This action cannot be undone.`
+    )
+
+    if (!confirmed) return
+
+    setDeleting(true)
+
+    const { error: deleteError } = await supabase
+      .from('goals')
+      .delete()
+      .eq('id', goal.id)
+
+    if (!deleteError) {
+      router.push('/goals')
+      router.refresh()
+    }
+
+    setDeleting(false)
+  }
+
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <Link href="/goals" className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors">
+          <ArrowLeft className="w-5 h-5 text-gray-500" />
+        </Link>
+        <h1 className="font-display text-2xl font-bold text-gray-900">
+          {isCompleted ? 'Completed Goal' : 'Edit Goal'}
+        </h1>
+      </div>
+
+      {/* Progress Card */}
+      <div className={`card ${isDebtPayoff ? 'bg-gradient-to-br from-red-50 to-coral-50' : 'bg-gradient-to-br from-sprout-50 to-bloom-50'}`}>
+        <div className="flex items-center gap-4">
+          <div className="flex-shrink-0">
+            {isDebtPayoff ? (
+              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center ${isCompleted ? 'bg-sprout-100' : 'bg-red-100'}`}>
+                {isCompleted ? (
+                  <CheckCircle2 className="w-10 h-10 text-sprout-600" />
+                ) : (
+                  <CreditCard className="w-10 h-10 text-red-500" />
+                )}
+              </div>
+            ) : (
+              <PlantVisual progress={progress} size="lg" />
+            )}
+          </div>
+          <div className="flex-1">
+            <h2 className="font-display text-lg font-semibold text-gray-900">{goal.name}</h2>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className={`text-2xl font-bold ${isDebtPayoff ? 'text-red-600' : 'text-bloom-600'}`}>
+                {formatCurrency(currentAmount)}
+              </span>
+              <span className="text-gray-400">of</span>
+              <span className="text-gray-600 font-medium">{formatCurrency(targetAmount)}</span>
+            </div>
+            <div className="h-2 bg-white/50 rounded-full overflow-hidden mt-2">
+              <div
+                className={`h-full rounded-full transition-all ${isDebtPayoff ? 'bg-red-500' : 'bg-sprout-500'}`}
+                style={{ width: `${Math.min(progress, 100)}%` }}
+              />
+            </div>
+            <p className="text-sm text-gray-500 mt-1">{Math.round(progress)}% {isDebtPayoff ? 'paid off' : 'complete'}</p>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        {!isCompleted && !isDebtPayoff && (
+          <div className="mt-4 pt-4 border-t border-white/30 flex gap-2">
+            <button
+              onClick={() => setShowAddFunds(!showAddFunds)}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium bg-white/50 hover:bg-white/70 rounded-xl transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Funds
+            </button>
+            <button
+              onClick={handleMarkComplete}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium bg-sprout-500 text-white hover:bg-sprout-600 rounded-xl transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Mark Complete
+            </button>
+          </div>
+        )}
+
+        {isCompleted && (
+          <div className="mt-4 pt-4 border-t border-white/30">
+            <button
+              onClick={handleReactivate}
+              disabled={loading}
+              className="w-full px-3 py-2 text-sm font-medium bg-white/50 hover:bg-white/70 rounded-xl transition-colors"
+            >
+              Reactivate Goal
+            </button>
+          </div>
+        )}
+
+        {/* Add Funds Form */}
+        {showAddFunds && (
+          <div className="mt-4 pt-4 border-t border-white/30 space-y-3">
+            <CurrencyInput
+              value={addAmount}
+              onChange={setAddAmount}
+              placeholder="0"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAddFunds(false)}
+                className="flex-1 px-3 py-2 text-sm font-medium bg-white/50 hover:bg-white/70 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddFunds}
+                disabled={loading || !addAmount}
+                className="flex-1 px-3 py-2 text-sm font-medium bg-sprout-500 text-white hover:bg-sprout-600 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Linked Account Info for Debt Payoff */}
+      {isDebtPayoff && linkedAccount && (
+        <div className="card">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+              <CreditCard className="w-5 h-5 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-gray-900">Linked to: {linkedAccount.name}</p>
+              <p className="text-sm text-gray-500">
+                Current balance: {formatCurrency(linkedAccount.balance)}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            This goal automatically updates when the linked account balance changes.
+          </p>
+        </div>
+      )}
+
+      {/* Edit Form */}
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label htmlFor="goal-name" className="label">Goal Name</label>
+          <input
+            id="goal-name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="What are you saving for?"
+            className="input"
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="target-amount" className="label">Target Amount</label>
+          <CurrencyInput
+            id="target-amount"
+            value={targetAmount}
+            onChange={setTargetAmount}
+            placeholder="10,000"
+            required
+          />
+        </div>
+
+        {!isDebtPayoff && (
+          <div>
+            <label htmlFor="current-amount" className="label">Current Amount</label>
+            <CurrencyInput
+              id="current-amount"
+              value={currentAmount}
+              onChange={setCurrentAmount}
+              placeholder="0"
+            />
+          </div>
+        )}
+
+        <div>
+          <label htmlFor="deadline" className="label">Target Date (optional)</label>
+          <input
+            id="deadline"
+            type="date"
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+            min={new Date().toISOString().split('T')[0]}
+            className="input"
+          />
+          {goal.deadline && (
+            <p className="text-xs text-gray-400 mt-1">
+              Currently set to: {format(new Date(goal.deadline), 'MMMM d, yyyy')}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading || !name || !targetAmount}
+          className="btn-primary w-full"
+        >
+          {loading ? 'Saving...' : 'Save Changes'}
+        </button>
+      </form>
+
+      {/* Delete */}
+      <div className="pt-4 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="w-full py-3 px-4 rounded-xl text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+        >
+          <Trash2 className="w-4 h-4" />
+          {deleting ? 'Deleting...' : 'Delete Goal'}
+        </button>
+      </div>
+    </>
+  )
+}

@@ -87,7 +87,18 @@ export function AccountsList({ accounts, showInterestInfo = false }: AccountsLis
 }
 
 function getOrdinalSuffix(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return s[(v - 20) % 10] || s[v] || s[0]
+  // Handle special cases for 11, 12, 13 (and 111, 112, 113, etc.)
+  const lastTwo = Math.abs(n) % 100
+  if (lastTwo >= 11 && lastTwo <= 13) {
+    return 'th'
+  }
+
+  // Handle normal cases based on last digit
+  const lastDigit = Math.abs(n) % 10
+  switch (lastDigit) {
+    case 1: return 'st'
+    case 2: return 'nd'
+    case 3: return 'rd'
+    default: return 'th'
+  }
 }

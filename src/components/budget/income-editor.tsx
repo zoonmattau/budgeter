@@ -110,20 +110,27 @@ export function IncomeEditor({ incomeEntries, currentMonth, onUpdate }: IncomeEd
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="income-editor-title"
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={() => setIsOpen(false)}
+        aria-label="Close modal"
       />
 
       {/* Modal */}
       <div className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl p-6 pb-safe animate-slide-up sm:animate-none">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display text-xl font-semibold">Edit Income</h2>
+          <h2 id="income-editor-title" className="font-display text-xl font-semibold">Edit Income</h2>
           <button
             onClick={() => setIsOpen(false)}
             className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            aria-label="Close"
           >
             <X className="w-5 h-5 text-gray-500" />
           </button>

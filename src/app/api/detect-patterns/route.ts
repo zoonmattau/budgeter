@@ -2,9 +2,36 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
+// Validate API key at startup
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.warn('Warning: ANTHROPIC_API_KEY is not set. Pattern detection will fail.')
+}
+
 const anthropic = new Anthropic()
 
+function extractJSON(text: string): unknown {
+  // Try to find JSON in code blocks first
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (codeBlockMatch) {
+    return JSON.parse(codeBlockMatch[1].trim())
+  }
+
+  // Find the first { and last } to extract the outermost JSON object
+  const firstBrace = text.indexOf('{')
+  const lastBrace = text.lastIndexOf('}')
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error('No JSON object found in response')
+  }
+
+  return JSON.parse(text.slice(firstBrace, lastBrace + 1))
+}
+
 export async function POST() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'Pattern detection is not configured. Please set up ANTHROPIC_API_KEY.' }, { status: 503 })
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -96,14 +123,14 @@ ${JSON.stringify(txList, null, 2)}`
 
     let analysis
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        analysis = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('No JSON found')
-      }
-    } catch {
-      return NextResponse.json({ suggested_bills: [], spending_patterns: [] })
+      analysis = extractJSON(responseText)
+    } catch (parseError) {
+      console.error('Pattern detection JSON parse error:', parseError)
+      return NextResponse.json({
+        suggested_bills: [],
+        spending_patterns: [],
+        error: 'Failed to parse AI response'
+      })
     }
 
     return NextResponse.json(analysis)

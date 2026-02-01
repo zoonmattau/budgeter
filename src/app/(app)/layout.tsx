@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BottomNav } from '@/components/navigation/bottom-nav'
 import { TopBar } from '@/components/navigation/top-bar'
+import { CurrencyProvider } from '@/components/providers/currency-provider'
 
 export default async function AppLayout({
   children,
@@ -27,12 +28,14 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="min-h-screen pb-20">
-      <TopBar />
-      <main className="px-4 py-4 max-w-lg mx-auto">
-        {children}
-      </main>
-      <BottomNav />
-    </div>
+    <CurrencyProvider currency={profile?.currency || 'AUD'}>
+      <div className="min-h-screen pb-20">
+        <TopBar />
+        <main className="px-4 py-4 max-w-lg mx-auto">
+          {children}
+        </main>
+        <BottomNav />
+      </div>
+    </CurrencyProvider>
   )
 }

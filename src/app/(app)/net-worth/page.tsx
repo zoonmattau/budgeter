@@ -27,7 +27,10 @@ export default async function NetWorthPage() {
 
   // Create/update today's snapshot if there are accounts
   if (accounts && accounts.length > 0) {
-    await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+    const { error: snapshotError } = await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+    if (snapshotError) {
+      console.error('Error creating net worth snapshot:', snapshotError)
+    }
   }
 
   // Group accounts by type

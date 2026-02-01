@@ -9,9 +9,11 @@ import { createClient } from '@/lib/supabase/client'
 import type { Tables } from '@/lib/database.types'
 
 // Time frame options with conversion to monthly
+// Using 365.25 days/year for accuracy (accounts for leap years)
+const DAYS_PER_MONTH = 365.25 / 12 // ~30.4375 days
 const TIME_FRAMES = [
-  { id: 'week', label: 'Per week', multiplier: 52 / 12 },
-  { id: 'fortnight', label: 'Per fortnight', multiplier: 26 / 12 },
+  { id: 'week', label: 'Per week', multiplier: DAYS_PER_MONTH / 7 },      // ~4.348
+  { id: 'fortnight', label: 'Per fortnight', multiplier: DAYS_PER_MONTH / 14 }, // ~2.174
   { id: 'month', label: 'Per month', multiplier: 1 },
 ] as const
 
@@ -19,7 +21,7 @@ type TimeFrame = typeof TIME_FRAMES[number]['id']
 
 // Subscription frequency options
 const SUBSCRIPTION_FREQUENCIES = [
-  { id: 'weekly', label: 'Weekly', multiplier: 52 / 12 },
+  { id: 'weekly', label: 'Weekly', multiplier: DAYS_PER_MONTH / 7 },  // ~4.348 weeks/month
   { id: 'monthly', label: 'Monthly', multiplier: 1 },
   { id: 'yearly', label: 'Yearly', multiplier: 1 / 12 },
 ] as const

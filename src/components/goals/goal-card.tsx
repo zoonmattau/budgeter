@@ -13,14 +13,16 @@ interface GoalCardProps {
 }
 
 export function GoalCard({ goal }: GoalCardProps) {
-  const progress = goal.target_amount > 0
-    ? (Number(goal.current_amount) / Number(goal.target_amount)) * 100
+  const targetAmount = Number(goal.target_amount) || 0
+  const currentAmount = Number(goal.current_amount) || 0
+  const progress = targetAmount > 0
+    ? (currentAmount / targetAmount) * 100
     : 0
   const likelihood = calculateLikelihood(goal)
   const requiredMonthly = getRequiredMonthlySavings(goal)
   const isCompleted = goal.status === 'completed'
   const isDebtPayoff = goal.goal_type === 'debt_payoff'
-  const remainingDebt = goal.target_amount - Number(goal.current_amount)
+  const remainingDebt = Math.max(0, targetAmount - currentAmount)
 
   return (
     <Link href={`/goals/${goal.id}`} className="card-hover block">

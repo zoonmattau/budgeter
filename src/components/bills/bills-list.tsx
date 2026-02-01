@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { format, differenceInDays, isToday, isTomorrow, isPast } from 'date-fns'
-import { Calendar, RotateCcw } from 'lucide-react'
+import { Calendar, RotateCcw, ChevronRight } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
 import type { Tables } from '@/lib/database.types'
@@ -50,7 +51,7 @@ export function BillsList({ bills }: BillsListProps) {
         else if (daysUntil <= 7) dueDateText = `In ${daysUntil} days`
 
         return (
-          <div key={bill.id} className="card">
+          <Link key={bill.id} href={`/bills/${bill.id}`} className="card block hover:shadow-md transition-shadow cursor-pointer">
             <div className="flex items-center gap-3">
               {bill.categories && (
                 <CategoryChip
@@ -75,8 +76,9 @@ export function BillsList({ bills }: BillsListProps) {
               </div>
 
               <p className="font-semibold text-gray-900">{formatCurrency(bill.amount)}</p>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
             </div>
-          </div>
+          </Link>
         )
       })}
     </div>

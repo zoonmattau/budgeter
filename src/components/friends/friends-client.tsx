@@ -41,6 +41,7 @@ export function FriendsClient({
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [processingId, setProcessingId] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -120,6 +121,9 @@ export function FriendsClient({
   }
 
   async function handleAccept(requestId: string) {
+    if (processingId) return
+    setProcessingId(requestId)
+
     const { error } = await supabase
       .from('friendships')
       .update({ status: 'accepted', updated_at: new Date().toISOString() })
@@ -127,10 +131,15 @@ export function FriendsClient({
 
     if (!error) {
       window.location.reload()
+    } else {
+      setProcessingId(null)
     }
   }
 
   async function handleReject(requestId: string) {
+    if (processingId) return
+    setProcessingId(requestId)
+
     const { error } = await supabase
       .from('friendships')
       .update({ status: 'rejected', updated_at: new Date().toISOString() })
@@ -138,10 +147,15 @@ export function FriendsClient({
 
     if (!error) {
       window.location.reload()
+    } else {
+      setProcessingId(null)
     }
   }
 
   async function handleCancelRequest(requestId: string) {
+    if (processingId) return
+    setProcessingId(requestId)
+
     const { error } = await supabase
       .from('friendships')
       .delete()
@@ -149,12 +163,18 @@ export function FriendsClient({
 
     if (!error) {
       window.location.reload()
+    } else {
+      setProcessingId(null)
     }
   }
 
   async function handleRemoveFriend(friendId: string) {
+    if (processingId) return
+
     const confirmed = window.confirm('Are you sure you want to remove this friend?')
     if (!confirmed) return
+
+    setProcessingId(friendId)
 
     const { error } = await supabase
       .from('friendships')
@@ -163,6 +183,8 @@ export function FriendsClient({
 
     if (!error) {
       window.location.reload()
+    } else {
+      setProcessingId(null)
     }
   }
 
@@ -253,13 +275,15 @@ export function FriendsClient({
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleAccept(request.id)}
-                    className="p-2 rounded-lg bg-sprout-100 text-sprout-600 hover:bg-sprout-200 transition-colors"
+                    disabled={processingId !== null}
+                    className="p-2 rounded-lg bg-sprout-100 text-sprout-600 hover:bg-sprout-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Check className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleReject(request.id)}
-                    className="p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
+                    disabled={processingId !== null}
+                    className="p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -295,9 +319,10 @@ export function FriendsClient({
                 </div>
                 <button
                   onClick={() => handleCancelRequest(request.id)}
-                  className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+                  disabled={processingId !== null}
+                  className="text-sm text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {processingId === request.id ? 'Canceling...' : 'Cancel'}
                 </button>
               </div>
             ))}
@@ -333,9 +358,10 @@ export function FriendsClient({
                 </div>
                 <button
                   onClick={() => handleRemoveFriend(friend.id)}
-                  className="text-sm text-gray-400 hover:text-red-600 transition-colors"
+                  disabled={processingId !== null}
+                  className="text-sm text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Remove
+                  {processingId === friend.id ? 'Removing...' : 'Remove'}
                 </button>
               </div>
             ))}

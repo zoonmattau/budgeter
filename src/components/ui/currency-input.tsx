@@ -9,6 +9,7 @@ interface CurrencyInputProps {
   className?: string
   autoFocus?: boolean
   required?: boolean
+  id?: string
 }
 
 export function CurrencyInput({
@@ -18,6 +19,7 @@ export function CurrencyInput({
   className = '',
   autoFocus = false,
   required = false,
+  id,
 }: CurrencyInputProps) {
   const [displayValue, setDisplayValue] = useState('')
 
@@ -66,6 +68,7 @@ export function CurrencyInput({
     <div className="relative">
       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-xl">$</span>
       <input
+        id={id}
         type="text"
         inputMode="decimal"
         value={displayValue}

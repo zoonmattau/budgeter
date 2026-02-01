@@ -165,19 +165,29 @@ export function AddBucketModal({ type, isOpen, onClose, onSuccess }: AddBucketMo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bucket-modal-title"
+    >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+        aria-label="Close modal"
+      />
 
       {/* Modal */}
       <div className="relative w-full max-w-lg bg-white rounded-t-3xl p-6 pb-safe animate-slide-up max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display text-xl font-semibold text-gray-900">
+          <h2 id="bucket-modal-title" className="font-display text-xl font-semibold text-gray-900">
             {titles[type]}
           </h2>
           <button
             onClick={onClose}
             className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            aria-label="Close"
           >
             <X className="w-5 h-5 text-gray-500" />
           </button>
@@ -186,8 +196,9 @@ export function AddBucketModal({ type, isOpen, onClose, onSuccess }: AddBucketMo
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}
           <div>
-            <label className="label">Name</label>
+            <label htmlFor="bucket-name" className="label">Name</label>
             <input
+              id="bucket-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -200,8 +211,9 @@ export function AddBucketModal({ type, isOpen, onClose, onSuccess }: AddBucketMo
 
           {/* Amount */}
           <div>
-            <label className="label">{amountLabels[type]}</label>
+            <label htmlFor="bucket-amount" className="label">{amountLabels[type]}</label>
             <CurrencyInput
+              id="bucket-amount"
               value={amount}
               onChange={setAmount}
               placeholder="0"
@@ -212,13 +224,15 @@ export function AddBucketModal({ type, isOpen, onClose, onSuccess }: AddBucketMo
           {/* Icon selection */}
           {(type === 'budget' || type === 'savings') && (
             <div>
-              <label className="label">Icon</label>
-              <div className="grid grid-cols-6 gap-2">
+              <label id="bucket-icon-label" className="label">Icon</label>
+              <div className="grid grid-cols-6 gap-2" role="group" aria-labelledby="bucket-icon-label">
                 {ICON_OPTIONS.map(({ id, icon: Icon }) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setSelectedIcon(id)}
+                    aria-label={`Icon ${id}`}
+                    aria-pressed={selectedIcon === id}
                     className={`p-3 rounded-xl transition-all ${
                       selectedIcon === id
                         ? 'bg-bloom-100 ring-2 ring-bloom-500'
@@ -235,13 +249,15 @@ export function AddBucketModal({ type, isOpen, onClose, onSuccess }: AddBucketMo
           {/* Color selection */}
           {(type === 'budget' || type === 'savings') && (
             <div>
-              <label className="label">Color</label>
-              <div className="flex flex-wrap gap-2">
+              <label id="bucket-color-label" className="label">Color</label>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="bucket-color-label">
                 {COLOR_OPTIONS.map((color) => (
                   <button
                     key={color}
                     type="button"
                     onClick={() => setSelectedColor(color)}
+                    aria-label={`Color ${color}`}
+                    aria-pressed={selectedColor === color}
                     className={`w-8 h-8 rounded-full transition-all ${
                       selectedColor === color
                         ? 'ring-2 ring-offset-2 ring-gray-400 scale-110'
