@@ -1,19 +1,46 @@
 'use client'
 
+import { useState } from 'react'
 import { format, isToday, isYesterday, parseISO } from 'date-fns'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
+import { MemberBadge, getMemberIndex } from '@/components/ui/member-badge'
+import { MemberBreakdown, MemberSpending } from '@/components/ui/member-breakdown'
+import { TransactionEditModal } from './transaction-edit-modal'
 import type { Tables } from '@/lib/database.types'
+import type { HouseholdMember } from '@/lib/scope-context'
+import { ChevronDown } from 'lucide-react'
 
 type TransactionWithCategory = Tables<'transactions'> & {
   categories: Tables<'categories'> | null
+  profiles?: { display_name: string | null } | null
 }
 
 interface TransactionsListProps {
   transactions: TransactionWithCategory[]
+  categories?: Tables<'categories'>[]
+  showMemberBadge?: boolean
+  members?: HouseholdMember[]
+  currentUserId?: string
+  memberBreakdown?: MemberSpending[]
 }
 
-export function TransactionsList({ transactions }: TransactionsListProps) {
+export function TransactionsList({
+  transactions,
+  categories = [],
+  showMemberBadge = false,
+  members = [],
+  currentUserId,
+  memberBreakdown = [],
+}: TransactionsListProps) {
+  const [memberFilter, setMemberFilter] = useState<string | null>(null)
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithCategory | null>(null)
+
+  // Filter transactions by member if filter is active
+  const filteredTransactions = memberFilter
+    ? transactions.filter(t => t.user_id === memberFilter)
+    : transactions
+
   if (transactions.length === 0) {
     return (
       <div className="card text-center py-12">
@@ -29,7 +56,7 @@ export function TransactionsList({ transactions }: TransactionsListProps) {
   }
 
   // Group transactions by date
-  const grouped = transactions.reduce((acc, transaction) => {
+  const grouped = filteredTransactions.reduce((acc, transaction) => {
     const date = transaction.date
     if (!acc[date]) {
       acc[date] = []
@@ -40,6 +67,40 @@ export function TransactionsList({ transactions }: TransactionsListProps) {
 
   return (
     <div className="space-y-4">
+      {/* Member filter dropdown for household view */}
+      {showMemberBadge && members.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500">Filter by:</span>
+          <div className="relative">
+            <select
+              value={memberFilter || ''}
+              onChange={(e) => setMemberFilter(e.target.value || null)}
+              className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-1.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-500 focus:border-transparent"
+            >
+              <option value="">All members</option>
+              {members.map((member) => (
+                <option key={member.user_id} value={member.user_id}>
+                  {member.user_id === currentUserId ? 'You' : member.display_name || 'Unknown'}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
+        </div>
+      )}
+
+      {/* Member breakdown summary */}
+      {showMemberBadge && memberBreakdown.length > 0 && !memberFilter && (
+        <div className="card">
+          <p className="text-sm text-gray-500 mb-2">Spending by member</p>
+          <MemberBreakdown
+            breakdown={memberBreakdown}
+            showLegend={true}
+            showAmounts={true}
+          />
+        </div>
+      )}
+
       {Object.entries(grouped).map(([date, dayTransactions]) => {
         const parsedDate = parseISO(date)
         let dateLabel = format(parsedDate, 'EEEE, MMM d')
@@ -59,12 +120,24 @@ export function TransactionsList({ transactions }: TransactionsListProps) {
             <div className="card divide-y divide-gray-50">
               {dayTransactions.map((transaction) => {
                 const isIncome = transaction.type === 'income'
+                const isOwnTransaction = transaction.user_id === currentUserId
+                const memberIndex = getMemberIndex(transaction.user_id, members)
+                const displayName = isOwnTransaction ? 'You' : transaction.profiles?.display_name || null
+
                 return (
-                  <div
+                  <button
                     key={transaction.id}
-                    className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                    onClick={() => setSelectedTransaction(transaction)}
+                    className="flex items-center justify-between py-3 first:pt-0 last:pb-0 w-full text-left hover:bg-gray-50 -mx-4 px-4 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3 min-w-0">
+                      {showMemberBadge && (
+                        <MemberBadge
+                          name={displayName}
+                          index={memberIndex}
+                          size="sm"
+                        />
+                      )}
                       {transaction.categories && (
                         <CategoryChip
                           name={transaction.categories.name}
@@ -85,13 +158,28 @@ export function TransactionsList({ transactions }: TransactionsListProps) {
                     <p className={`font-semibold flex-shrink-0 ml-3 ${isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
                       {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
                     </p>
-                  </div>
+                  </button>
                 )
               })}
             </div>
           </div>
         )
       })}
+
+      {filteredTransactions.length === 0 && transactions.length > 0 && (
+        <div className="card text-center py-8">
+          <p className="text-gray-500 text-sm">No transactions from this member</p>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {selectedTransaction && categories.length > 0 && (
+        <TransactionEditModal
+          transaction={selectedTransaction}
+          categories={categories.filter(c => c.type === selectedTransaction.type)}
+          onClose={() => setSelectedTransaction(null)}
+        />
+      )}
     </div>
   )
 }

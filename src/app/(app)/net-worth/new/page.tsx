@@ -47,6 +47,7 @@ export default function NewAccountPage() {
   const [paymentFrequency, setPaymentFrequency] = useState<'weekly' | 'fortnightly' | 'monthly'>('monthly')
 
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -61,11 +62,16 @@ export default function NewAccountPage() {
     if (!name || !balance) return
 
     setLoading(true)
+    setError(null)
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      setError('You must be logged in to add an account')
+      setLoading(false)
+      return
+    }
 
-    const { error } = await supabase.from('accounts').insert({
+    const { error: insertError } = await supabase.from('accounts').insert({
       user_id: user.id,
       name,
       type,
@@ -81,16 +87,21 @@ export default function NewAccountPage() {
       payment_frequency: showDebtFields ? paymentFrequency : null,
     })
 
-    if (!error) {
-      const { error: snapshotError } = await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
-      if (snapshotError) {
-        console.error('Error creating net worth snapshot:', snapshotError)
-      }
-      router.push('/net-worth')
-      router.refresh()
+    if (insertError) {
+      console.error('Error adding account:', insertError)
+      setError(insertError.message || 'Failed to add account. Please try again.')
+      setLoading(false)
+      return
     }
 
-    setLoading(false)
+    // Create/update net worth snapshot
+    const { error: snapshotError } = await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
+    if (snapshotError) {
+      console.error('Error creating net worth snapshot:', snapshotError)
+    }
+
+    router.push('/net-worth')
+    router.refresh()
   }
 
   return (
@@ -101,6 +112,12 @@ export default function NewAccountPage() {
         </Link>
         <h1 className="font-display text-2xl font-bold text-gray-900">Add Account</h1>
       </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 rounded-xl text-red-700 text-sm">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
@@ -194,10 +211,16 @@ export default function NewAccountPage() {
             onChange={setBalance}
             placeholder="0"
             required
+            isNegative={!selectedType.isAsset}
           />
           {isInvestment && (
             <p className="text-xs text-gray-400 mt-1">
               Enter today&apos;s value. You can update this anytime from the account details.
+            </p>
+          )}
+          {!selectedType.isAsset && (
+            <p className="text-xs text-gray-400 mt-1">
+              This amount will count against your net worth
             </p>
           )}
         </div>
@@ -244,16 +267,21 @@ export default function NewAccountPage() {
             <div className="space-y-4">
               <div>
                 <label className="label">Interest Rate (% p.a.)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={interestRate}
-                  onChange={(e) => setInterestRate(e.target.value)}
-                  placeholder="e.g., 19.99"
-                  className="input"
-                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={interestRate}
+                    onChange={(e) => setInterestRate(e.target.value)}
+                    placeholder="e.g., 19.99"
+                    className="input pr-10"
+                  />
+                  {interestRate && (
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">%</span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-400 mt-1">
                   Annual interest rate - used to calculate interest charges
                 </p>

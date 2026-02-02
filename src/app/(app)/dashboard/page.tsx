@@ -1,23 +1,84 @@
+import Link from 'next/link'
+import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { BudgetOverview } from '@/components/dashboard/budget-overview'
+import { BillsSummary } from '@/components/dashboard/bills-summary'
 import { GoalsList } from '@/components/dashboard/goals-list'
 import { UpcomingBills } from '@/components/dashboard/upcoming-bills'
+import { DebtRepayments } from '@/components/dashboard/debt-repayments'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
 import { QuickLinks } from '@/components/dashboard/quick-links'
 import { SpendingSnapshot } from '@/components/dashboard/spending-snapshot'
 import { NetWorthCard } from '@/components/dashboard/net-worth-card'
-import { format, startOfMonth } from 'date-fns'
+import { SmartPredictions } from '@/components/dashboard/smart-predictions'
+import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { ScopeToggle } from '@/components/ui/scope-toggle'
+import { format, startOfMonth, addDays, subDays } from 'date-fns'
+import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
+import type { MemberSpending } from '@/components/ui/member-breakdown'
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams: Promise<{ scope?: string }>
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return null
 
+  const params = await searchParams
   const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd')
 
-  // Fetch dashboard data in parallel
+  // Calculate date range for predictions
+  const today = new Date()
+  const threeDaysAgo = subDays(today, 3)
+  const sevenDaysFromNow = addDays(today, 7)
+
+  // Fetch household membership
+  const { data: membership } = await supabase
+    .from('household_members')
+    .select(`
+      household_id,
+      role,
+      households (
+        id,
+        name
+      )
+    `)
+    .eq('user_id', user.id)
+    .single()
+
+  const householdId = membership?.household_id || null
+  const isInHousehold = Boolean(householdId)
+  const scope: ViewScope = params.scope === 'household' && isInHousehold ? 'household' : 'personal'
+
+  // Fetch household members if in household view
+  let members: HouseholdMember[] = []
+  if (scope === 'household' && householdId) {
+    const { data: householdMembers } = await supabase
+      .from('household_members')
+      .select(`
+        user_id,
+        role,
+        profiles (
+          display_name
+        )
+      `)
+      .eq('household_id', householdId)
+
+    members = (householdMembers || []).map((m) => {
+      const profile = m.profiles as unknown as { display_name: string | null } | null
+      return {
+        user_id: m.user_id,
+        display_name: profile?.display_name || null,
+        role: m.role as 'owner' | 'member',
+      }
+    })
+  }
+
+  // Fetch dashboard data in parallel - scope-aware queries
   const [
     { data: incomeEntries },
     { data: budgets },
@@ -27,51 +88,133 @@ export default async function DashboardPage() {
     { data: expenseCategories },
     { data: incomeCategories },
     { data: accounts },
+    { data: predictions },
   ] = await Promise.all([
-    supabase
-      .from('income_entries')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth),
-    supabase
-      .from('budgets')
-      .select('*, categories(*)')
-      .eq('user_id', user.id)
-      .eq('month', currentMonth),
-    supabase
-      .from('transactions')
-      .select('*, categories(*)')
-      .eq('user_id', user.id)
-      .gte('date', currentMonth)
-      .order('date', { ascending: false }),
-    supabase
-      .from('goals')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(3),
-    supabase
-      .from('bills')
-      .select('*, categories(*)')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .order('next_due', { ascending: true })
-      .limit(4),
+    // Income entries - scope aware
+    scope === 'household' && householdId
+      ? supabase
+          .from('income_entries')
+          .select('*')
+          .eq('household_id', householdId)
+          .eq('month', currentMonth)
+      : supabase
+          .from('income_entries')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('month', currentMonth),
+
+    // Budgets - scope aware
+    scope === 'household' && householdId
+      ? supabase
+          .from('budgets')
+          .select('*, categories(*)')
+          .eq('household_id', householdId)
+          .eq('month', currentMonth)
+      : supabase
+          .from('budgets')
+          .select('*, categories(*)')
+          .eq('user_id', user.id)
+          .eq('month', currentMonth),
+
+    // Transactions - scope aware with profile data for household view
+    scope === 'household' && householdId
+      ? supabase
+          .from('transactions')
+          .select('*, categories(*), profiles:user_id(display_name)')
+          .eq('household_id', householdId)
+          .gte('date', currentMonth)
+          .order('date', { ascending: false })
+      : supabase
+          .from('transactions')
+          .select('*, categories(*)')
+          .eq('user_id', user.id)
+          .gte('date', currentMonth)
+          .order('date', { ascending: false }),
+
+    // Goals - scope aware
+    scope === 'household' && householdId
+      ? supabase
+          .from('goals')
+          .select('*')
+          .eq('household_id', householdId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(3)
+      : supabase
+          .from('goals')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(3),
+
+    // Bills - scope aware
+    scope === 'household' && householdId
+      ? supabase
+          .from('bills')
+          .select('*, categories(*)')
+          .eq('household_id', householdId)
+          .eq('is_active', true)
+          .order('next_due', { ascending: true })
+          .limit(4)
+      : supabase
+          .from('bills')
+          .select('*, categories(*)')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('next_due', { ascending: true })
+          .limit(4),
+
+    // Categories (always personal for now)
     supabase
       .from('categories')
       .select('*')
       .eq('user_id', user.id)
       .eq('type', 'expense'),
+
     supabase
       .from('categories')
       .select('*')
       .eq('user_id', user.id)
       .eq('type', 'income'),
+
+    // Accounts - scope aware
+    scope === 'household' && householdId
+      ? supabase
+          .from('accounts')
+          .select('*')
+          .eq('household_id', householdId)
+      : supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', user.id),
+
+    // Predictions (personal only for now)
     supabase
-      .from('accounts')
-      .select('*')
-      .eq('user_id', user.id),
+      .from('pattern_predictions')
+      .select(`
+        *,
+        payment_patterns (
+          id,
+          name,
+          normalized_name,
+          typical_amount,
+          frequency,
+          confidence,
+          category_id,
+          categories:category_id (
+            id,
+            name,
+            icon,
+            color
+          )
+        )
+      `)
+      .eq('user_id', user.id)
+      .eq('status', 'pending')
+      .gte('predicted_date', threeDaysAgo.toISOString().split('T')[0])
+      .lte('predicted_date', sevenDaysFromNow.toISOString().split('T')[0])
+      .order('predicted_date', { ascending: true }),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
@@ -79,6 +222,24 @@ export default async function DashboardPage() {
   const totalSpent = transactions
     ?.filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + Number(t.amount), 0) || 0
+
+  // Calculate member spending breakdown for household view
+  let memberBreakdown: MemberSpending[] = []
+  if (scope === 'household' && transactions) {
+    const spendingByUser = new Map<string, number>()
+    transactions
+      .filter(t => t.type === 'expense')
+      .forEach(t => {
+        const current = spendingByUser.get(t.user_id) || 0
+        spendingByUser.set(t.user_id, current + Number(t.amount))
+      })
+
+    memberBreakdown = members.map(member => ({
+      userId: member.user_id,
+      displayName: member.user_id === user.id ? 'You' : member.display_name,
+      amount: spendingByUser.get(member.user_id) || 0,
+    }))
+  }
 
   // Calculate net worth
   const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
@@ -88,17 +249,19 @@ export default async function DashboardPage() {
   // Get credit cards for expense linking
   const creditCards = accounts?.filter(a => a.type === 'credit' || a.type === 'credit_card') || []
 
-  // Create/update net worth snapshot if user has accounts
-  if (accounts && accounts.length > 0) {
+  // Get investment accounts for investment contributions
+  const investmentAccounts = accounts?.filter(a => a.type === 'investment') || []
+
+  // Create/update net worth snapshot if user has accounts (personal only)
+  if (scope === 'personal' && accounts && accounts.length > 0) {
     const { error: snapshotError } = await supabase.rpc('create_net_worth_snapshot', { p_user_id: user.id })
     if (snapshotError) {
       console.error('Error creating net worth snapshot:', snapshotError)
     }
   }
 
-  // Auto-complete debt payoff goals when linked account balance reaches 0
-  // Use Promise.all for parallel updates and add error handling
-  if (goals && accounts) {
+  // Auto-complete debt payoff goals when linked account balance reaches 0 (personal scope only)
+  if (scope === 'personal' && goals && accounts) {
     const debtPayoffGoals = goals.filter(g => g.goal_type === 'debt_payoff' && g.linked_account_id)
     const updates = debtPayoffGoals.map(async (goal) => {
       const linkedAccount = accounts.find(a => a.id === goal.linked_account_id)
@@ -109,7 +272,6 @@ export default async function DashboardPage() {
       const accountBalance = Number(linkedAccount.balance) || 0
 
       if (accountBalance <= 0 && goal.status !== 'completed') {
-        // Auto-complete this goal
         const { error } = await supabase
           .from('goals')
           .update({
@@ -118,13 +280,11 @@ export default async function DashboardPage() {
             updated_at: new Date().toISOString(),
           })
           .eq('id', goal.id)
-          .eq('status', 'active') // Only update if still active (prevents race condition)
+          .eq('status', 'active')
 
         if (error) console.error('Error completing goal:', error)
       } else if (accountBalance > 0) {
-        // Update current_amount to reflect how much has been paid off
         const paidOff = Math.max(0, targetAmount - accountBalance)
-        // Only update if there's a meaningful difference (> $0.01)
         if (Math.abs(paidOff - currentAmount) > 0.01) {
           const { error } = await supabase
             .from('goals')
@@ -142,16 +302,22 @@ export default async function DashboardPage() {
     await Promise.all(updates)
   }
 
+  // Cast transactions for components
+  const typedTransactions = (transactions || []) as (typeof transactions extends (infer T)[] | null ? T & { profiles?: { display_name: string | null } | null } : never)[]
+
   return (
     <div className="space-y-6">
-      {/* Greeting */}
-      <div>
-        <h1 className="font-display text-2xl font-bold text-gray-900">
-          {getGreeting()}
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {format(new Date(), 'EEEE, MMMM d')}
-        </p>
+      {/* Greeting with Scope Toggle */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-gray-900">
+            {getGreeting()}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {format(new Date(), 'EEEE, MMMM d')}
+          </p>
+        </div>
+        {isInHousehold && <ScopeToggle />}
       </div>
 
       {/* Budget Overview Card */}
@@ -159,6 +325,8 @@ export default async function DashboardPage() {
         totalIncome={totalIncome}
         totalAllocated={totalAllocated}
         totalSpent={totalSpent}
+        scope={scope}
+        memberBreakdown={memberBreakdown}
       />
 
       {/* Net Worth Card */}
@@ -172,43 +340,90 @@ export default async function DashboardPage() {
       <QuickLinks />
 
       {/* Spending Snapshot */}
-      <SpendingSnapshot transactions={transactions || []} />
+      <SpendingSnapshot
+        transactions={typedTransactions}
+        scope={scope}
+        members={members}
+        currentUserId={user.id}
+      />
+
+      {/* Activity Feed - only shown in household view */}
+      {scope === 'household' && (
+        <section>
+          <h2 className="font-display font-semibold text-gray-900 mb-3">Household Activity</h2>
+          <ActivityFeed
+            transactions={typedTransactions.slice(0, 10)}
+            members={members}
+            currentUserId={user.id}
+          />
+        </section>
+      )}
 
       {/* Goals Progress */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-display font-semibold text-gray-900">Your Goals</h2>
-          <a href="/goals" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
+          <h2 className="font-display font-semibold text-gray-900">
+            {scope === 'household' ? 'Household Goals' : 'Your Goals'}
+          </h2>
+          <Link href="/goals" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
             See all
-          </a>
+          </Link>
         </div>
         <GoalsList goals={goals || []} />
       </section>
+
+      {/* Smart Predictions */}
+      <SmartPredictions
+        predictions={predictions || []}
+        expenseCategories={expenseCategories || []}
+      />
+
+      {/* Bills & Subscriptions Summary */}
+      <BillsSummary bills={bills || []} />
 
       {/* Upcoming Bills */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-display font-semibold text-gray-900">Upcoming Bills</h2>
-          <a href="/bills" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
+          <Link href="/bills" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
             See all
-          </a>
+          </Link>
         </div>
-        <UpcomingBills bills={bills || []} />
+        <UpcomingBills
+          bills={bills || []}
+          debtAccounts={accounts?.filter(a =>
+            (a.type === 'credit' || a.type === 'credit_card' || a.type === 'loan' || a.type === 'debt') &&
+            a.balance > 0 &&
+            a.due_date &&
+            a.minimum_payment
+          ) || []}
+        />
       </section>
+
+      {/* Debt Repayments */}
+      <DebtRepayments
+        accounts={accounts || []}
+        availableFunds={Math.max(0, totalIncome - totalAllocated)}
+      />
 
       {/* Recent Transactions */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-display font-semibold text-gray-900">Recent Transactions</h2>
-          <a href="/transactions" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
+          <Link href="/transactions" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
             See all
-          </a>
+          </Link>
         </div>
-        <RecentTransactions transactions={(transactions || []).slice(0, 5)} />
+        <RecentTransactions
+          transactions={typedTransactions.slice(0, 5)}
+          showMemberBadge={scope === 'household'}
+          members={members}
+          currentUserId={user.id}
+        />
       </section>
 
       {/* Quick Add FAB */}
-      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={creditCards} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={creditCards} investmentAccounts={investmentAccounts} />
     </div>
   )
 }

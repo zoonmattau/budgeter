@@ -32,8 +32,8 @@ export function SpendingDonut({ data, height = 200, showLegend = true }: Spendin
             data={data}
             cx="50%"
             cy="50%"
-            innerRadius={50}
-            outerRadius={80}
+            innerRadius={height < 150 ? '40%' : '50%'}
+            outerRadius={height < 150 ? '90%' : '80%'}
             paddingAngle={2}
             dataKey="value"
           >

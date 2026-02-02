@@ -1,13 +1,34 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { normalizeDescription, calculateNextExpected } from '@/lib/patterns/matcher'
 
 // Validate API key at startup
 if (!process.env.ANTHROPIC_API_KEY) {
   console.warn('Warning: ANTHROPIC_API_KEY is not set. Pattern detection will fail.')
 }
 
-const anthropic = new Anthropic()
+// Only create client if API key exists
+let anthropicClient: Anthropic | null = null
+if (process.env.ANTHROPIC_API_KEY) {
+  anthropicClient = new Anthropic()
+}
+
+interface SuggestedBill {
+  name: string
+  amount: number
+  frequency: string
+  typical_day: number
+  category?: string
+  confidence: 'high' | 'medium' | 'low'
+  evidence?: string
+}
+
+interface SpendingPattern {
+  pattern: string
+  insight: string
+  suggestion: string
+}
 
 function extractJSON(text: string): unknown {
   // Try to find JSON in code blocks first
@@ -28,8 +49,10 @@ function extractJSON(text: string): unknown {
 }
 
 export async function POST() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'Pattern detection is not configured. Please set up ANTHROPIC_API_KEY.' }, { status: 503 })
+  if (!process.env.ANTHROPIC_API_KEY || !anthropicClient) {
+    return NextResponse.json({
+      error: 'Pattern detection is not available. Please try again later.'
+    }, { status: 503 })
   }
 
   const supabase = await createClient()
@@ -77,8 +100,8 @@ export async function POST() {
     }))
 
     // Use Claude to find patterns
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const message = await anthropicClient.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 2048,
       messages: [
         {
@@ -121,9 +144,9 @@ ${JSON.stringify(txList, null, 2)}`
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
 
-    let analysis
+    let analysis: { suggested_bills?: SuggestedBill[]; spending_patterns?: SpendingPattern[] }
     try {
-      analysis = extractJSON(responseText)
+      analysis = extractJSON(responseText) as typeof analysis
     } catch (parseError) {
       console.error('Pattern detection JSON parse error:', parseError)
       return NextResponse.json({
@@ -133,9 +156,63 @@ ${JSON.stringify(txList, null, 2)}`
       })
     }
 
+    // Persist detected patterns to payment_patterns table
+    if (analysis.suggested_bills && analysis.suggested_bills.length > 0) {
+      // Fetch user's categories for mapping
+      const { data: categories } = await supabase
+        .from('categories')
+        .select('id, name')
+        .eq('user_id', user.id)
+
+      const categoryMap = new Map(categories?.map(c => [c.name.toLowerCase(), c.id]) || [])
+
+      for (const bill of analysis.suggested_bills) {
+        const normalizedName = normalizeDescription(bill.name)
+        const categoryId = categoryMap.get(bill.category?.toLowerCase()) || null
+        const confidence = bill.confidence === 'high' ? 0.85 : bill.confidence === 'medium' ? 0.65 : 0.45
+        const frequency = bill.frequency as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+        const nextExpected = calculateNextExpected(frequency, bill.typical_day)
+
+        // Upsert pattern (update if exists, insert if not)
+        const { error: upsertError } = await supabase
+          .from('payment_patterns')
+          .upsert({
+            user_id: user.id,
+            name: bill.name,
+            normalized_name: normalizedName,
+            typical_amount: bill.amount,
+            amount_variance: bill.amount * 0.1, // 10% variance by default
+            frequency,
+            typical_day: bill.typical_day,
+            day_variance: 3,
+            confidence,
+            category_id: categoryId,
+            is_active: true,
+            next_expected: nextExpected.toISOString().split('T')[0],
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,normalized_name',
+            ignoreDuplicates: false
+          })
+
+        if (upsertError) {
+          console.error('Error upserting pattern:', upsertError)
+        }
+      }
+    }
+
     return NextResponse.json(analysis)
   } catch (error) {
     console.error('Pattern detection error:', error)
-    return NextResponse.json({ error: 'Failed to detect patterns' }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    if (errorMessage.includes('API key')) {
+      return NextResponse.json({ error: 'Pattern detection is not available. Please try again later.' }, { status: 503 })
+    }
+    if (errorMessage.includes('rate limit')) {
+      return NextResponse.json({ error: 'Too many requests. Please wait a moment and try again.' }, { status: 429 })
+    }
+
+    return NextResponse.json({ error: 'Failed to detect patterns. Please try again.' }, { status: 500 })
   }
 }

@@ -85,6 +85,8 @@ export interface Database {
           household_id: string
           user_id: string
           role: 'owner' | 'member'
+          contribution_amount: number | null
+          contribution_frequency: 'weekly' | 'fortnightly' | 'monthly' | null
           joined_at: string
         }
         Insert: {
@@ -92,6 +94,8 @@ export interface Database {
           household_id: string
           user_id: string
           role?: 'owner' | 'member'
+          contribution_amount?: number | null
+          contribution_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
           joined_at?: string
         }
         Update: {
@@ -99,6 +103,8 @@ export interface Database {
           household_id?: string
           user_id?: string
           role?: 'owner' | 'member'
+          contribution_amount?: number | null
+          contribution_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
           joined_at?: string
         }
         Relationships: []
@@ -419,6 +425,7 @@ export interface Database {
         Row: {
           id: string
           goal_id: string
+          user_id: string
           amount: number
           source: 'manual' | 'budget' | 'challenge'
           note: string | null
@@ -428,6 +435,7 @@ export interface Database {
         Insert: {
           id?: string
           goal_id: string
+          user_id: string
           amount: number
           source?: 'manual' | 'budget' | 'challenge'
           note?: string | null
@@ -437,13 +445,21 @@ export interface Database {
         Update: {
           id?: string
           goal_id?: string
+          user_id?: string
           amount?: number
           source?: 'manual' | 'budget' | 'challenge'
           note?: string | null
           date?: string
           created_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "goal_contributions_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       challenges: {
         Row: {
@@ -633,6 +649,174 @@ export interface Database {
           updated_at?: string
         }
         Relationships: []
+      }
+      payment_patterns: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          normalized_name: string
+          typical_amount: number
+          amount_variance: number
+          frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+          typical_day: number
+          day_variance: number
+          confidence: number
+          occurrence_count: number
+          category_id: string | null
+          is_active: boolean
+          last_occurrence: string | null
+          next_expected: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          normalized_name: string
+          typical_amount: number
+          amount_variance?: number
+          frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+          typical_day: number
+          day_variance?: number
+          confidence?: number
+          occurrence_count?: number
+          category_id?: string | null
+          is_active?: boolean
+          last_occurrence?: string | null
+          next_expected?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          normalized_name?: string
+          typical_amount?: number
+          amount_variance?: number
+          frequency?: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+          typical_day?: number
+          day_variance?: number
+          confidence?: number
+          occurrence_count?: number
+          category_id?: string | null
+          is_active?: boolean
+          last_occurrence?: string | null
+          next_expected?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_patterns_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_patterns_category_id_fkey"
+            columns: ["category_id"]
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pattern_predictions: {
+        Row: {
+          id: string
+          pattern_id: string
+          user_id: string
+          predicted_date: string
+          predicted_amount: number
+          status: 'pending' | 'matched' | 'dismissed' | 'expired'
+          matched_transaction_id: string | null
+          resolved_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          pattern_id: string
+          user_id: string
+          predicted_date: string
+          predicted_amount: number
+          status?: 'pending' | 'matched' | 'dismissed' | 'expired'
+          matched_transaction_id?: string | null
+          resolved_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          pattern_id?: string
+          user_id?: string
+          predicted_date?: string
+          predicted_amount?: number
+          status?: 'pending' | 'matched' | 'dismissed' | 'expired'
+          matched_transaction_id?: string | null
+          resolved_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pattern_predictions_pattern_id_fkey"
+            columns: ["pattern_id"]
+            referencedRelation: "payment_patterns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pattern_predictions_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pattern_predictions_matched_transaction_id_fkey"
+            columns: ["matched_transaction_id"]
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      household_invitations: {
+        Row: {
+          id: string
+          household_id: string
+          invited_email: string
+          invited_by: string
+          status: 'pending' | 'accepted' | 'declined'
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          household_id: string
+          invited_email: string
+          invited_by: string
+          status?: 'pending' | 'accepted' | 'declined'
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          invited_email?: string
+          invited_by?: string
+          status?: 'pending' | 'accepted' | 'declined'
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "household_invitations_household_id_fkey"
+            columns: ["household_id"]
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "household_invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {

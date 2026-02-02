@@ -63,6 +63,7 @@ export default function ImportPage() {
   const [mode, setMode] = useState<'upload' | 'paste' | 'scan'>('upload')
   const [file, setFile] = useState<File | null>(null)
   const [pastedText, setPastedText] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
@@ -112,14 +113,20 @@ export default function ImportPage() {
         body: formData,
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Failed to analyze statement')
+        throw new Error(data.error || 'Failed to analyse statement')
       }
 
-      const data = await response.json()
+      if (data.error) {
+        throw new Error(data.error)
+      }
+
       setAnalysis(data)
     } catch (err) {
-      setError('Failed to analyze statement. Please try again.')
+      const message = err instanceof Error ? err.message : 'Failed to analyse statement'
+      setError(message)
     } finally {
       setAnalyzing(false)
     }
@@ -270,7 +277,7 @@ export default function ImportPage() {
         </Link>
         <div>
           <h1 className="font-display text-2xl font-bold text-gray-900">Smart Import</h1>
-          <p className="text-sm text-gray-500">Let AI analyze your spending</p>
+          <p className="text-sm text-gray-500">Let us analyse your spending</p>
         </div>
       </div>
 
@@ -323,7 +330,34 @@ export default function ImportPage() {
       {/* Upload Mode */}
       {mode === 'upload' && !analysis && (
         <div className="card">
-          <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center">
+          <div
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+              isDragging
+                ? 'border-bloom-500 bg-bloom-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setIsDragging(true)
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setIsDragging(false)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setIsDragging(false)
+              const droppedFile = e.dataTransfer.files[0]
+              if (droppedFile && (droppedFile.name.endsWith('.csv') || droppedFile.name.endsWith('.txt'))) {
+                setFile(droppedFile)
+              } else {
+                setError('Please upload a CSV or TXT file')
+              }
+            }}
+          >
             <input
               type="file"
               accept=".csv,.txt"
@@ -331,12 +365,32 @@ export default function ImportPage() {
               className="hidden"
               id="file-upload"
             />
-            <label htmlFor="file-upload" className="cursor-pointer">
-              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="font-medium text-gray-700">
-                {file ? file.name : 'Drop your bank statement here'}
-              </p>
-              <p className="text-sm text-gray-400 mt-1">CSV or TXT format</p>
+            <label htmlFor="file-upload" className="cursor-pointer block">
+              {file ? (
+                <>
+                  <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-sprout-500" />
+                  <p className="font-medium text-sprout-700">{file.name}</p>
+                  <p className="text-sm text-gray-400 mt-1">Ready to analyse</p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setFile(null)
+                    }}
+                    className="text-xs text-gray-400 hover:text-gray-600 mt-2 underline"
+                  >
+                    Remove file
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Upload className={`w-10 h-10 mx-auto mb-3 ${isDragging ? 'text-bloom-500' : 'text-gray-400'}`} />
+                  <p className="font-medium text-gray-700">
+                    {isDragging ? 'Drop file here' : 'Drop your bank statement here'}
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">CSV or TXT format, or click to browse</p>
+                </>
+              )}
             </label>
           </div>
 
@@ -348,12 +402,12 @@ export default function ImportPage() {
             {analyzing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Analyzing...
+                Analysing...
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                Analyze Statement
+                Analyse Statement
               </>
             )}
           </button>
@@ -364,7 +418,7 @@ export default function ImportPage() {
       {mode === 'paste' && !analysis && (
         <div className="card">
           <p className="text-sm text-gray-500 mb-3">
-            Paste your bank statement data below (copy from your bank's website or statement)
+            Paste your bank statement data below (copy from your bank&apos;s website or statement)
           </p>
           <textarea
             value={pastedText}
@@ -381,12 +435,12 @@ export default function ImportPage() {
             {analyzing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Analyzing...
+                Analysing...
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                Analyze Data
+                Analyse Data
               </>
             )}
           </button>
@@ -401,7 +455,7 @@ export default function ImportPage() {
             Scan Your Transactions
           </h3>
           <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto">
-            We'll analyze your existing transactions to find recurring bills and spending patterns
+            We&apos;ll analyse your existing transactions to find recurring bills and spending patterns
           </p>
           <button
             onClick={handleScanPatterns}
@@ -518,7 +572,7 @@ export default function ImportPage() {
             onClick={() => setAnalysis(null)}
             className="text-sm text-bloom-600 hover:text-bloom-700"
           >
-            ← Analyze another statement
+            ← Analyse another statement
           </button>
 
           {/* Summary Card */}

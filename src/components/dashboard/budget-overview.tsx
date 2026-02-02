@@ -3,14 +3,24 @@
 import Link from 'next/link'
 import { ArrowRight, Wallet } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { MemberBreakdown, MemberSpending } from '@/components/ui/member-breakdown'
+import type { ViewScope } from '@/lib/scope-context'
 
 interface BudgetOverviewProps {
   totalIncome: number
   totalAllocated: number
   totalSpent: number
+  scope?: ViewScope
+  memberBreakdown?: MemberSpending[]
 }
 
-export function BudgetOverview({ totalIncome, totalAllocated, totalSpent }: BudgetOverviewProps) {
+export function BudgetOverview({
+  totalIncome,
+  totalAllocated,
+  totalSpent,
+  scope = 'personal',
+  memberBreakdown = [],
+}: BudgetOverviewProps) {
   const unallocated = totalIncome - totalAllocated
   const remaining = totalAllocated - totalSpent
   const spentPercentage = totalAllocated > 0 ? (totalSpent / totalAllocated) * 100 : 0
@@ -18,6 +28,8 @@ export function BudgetOverview({ totalIncome, totalAllocated, totalSpent }: Budg
   const isOverBudget = remaining < 0
   const needsSetup = totalAllocated === 0 && totalIncome > 0
   const noIncome = totalIncome === 0
+
+  const isHousehold = scope === 'household'
 
   // Show setup prompt when no budget is allocated
   if (needsSetup) {
@@ -31,7 +43,9 @@ export function BudgetOverview({ totalIncome, totalAllocated, totalSpent }: Budg
             <Wallet className="w-7 h-7" />
           </div>
           <div className="flex-1">
-            <p className="font-semibold text-lg">Allocate Your Income</p>
+            <p className="font-semibold text-lg">
+              {isHousehold ? 'Allocate Household Income' : 'Allocate Your Income'}
+            </p>
             <p className="text-coral-100 text-sm mt-0.5">
               You have {formatCurrency(totalIncome)} to assign to spending categories
             </p>
@@ -60,9 +74,11 @@ export function BudgetOverview({ totalIncome, totalAllocated, totalSpent }: Budg
             <Wallet className="w-7 h-7" />
           </div>
           <div className="flex-1">
-            <p className="font-semibold text-lg">Set Up Your Budget</p>
+            <p className="font-semibold text-lg">
+              {isHousehold ? 'Set Up Household Budget' : 'Set Up Your Budget'}
+            </p>
             <p className="text-gray-200 text-sm mt-0.5">
-              Add your monthly income to get started
+              {isHousehold ? 'Add household income to get started' : 'Add your monthly income to get started'}
             </p>
           </div>
           <ArrowRight className="w-5 h-5 flex-shrink-0" />
@@ -78,7 +94,9 @@ export function BudgetOverview({ totalIncome, totalAllocated, totalSpent }: Budg
     <Link href="/budget" className="block card bg-gradient-to-br from-bloom-500 to-bloom-600 text-white hover:from-bloom-600 hover:to-bloom-700 transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <p className="text-bloom-100 text-sm font-medium">Monthly Budget</p>
+          <p className="text-bloom-100 text-sm font-medium">
+            {isHousehold ? 'Household Budget' : 'Monthly Budget'}
+          </p>
           <p className="text-3xl font-bold mt-1">{formatCurrency(totalAllocated)}</p>
         </div>
         {isUnderAllocated && (
@@ -111,6 +129,20 @@ export function BudgetOverview({ totalIncome, totalAllocated, totalSpent }: Budg
           </p>
         </div>
       </div>
+
+      {/* Member breakdown for household view */}
+      {isHousehold && memberBreakdown.length > 0 && totalSpent > 0 && (
+        <div className="mt-4 pt-4 border-t border-white/20">
+          <p className="text-bloom-100 text-xs mb-2">Spending by member</p>
+          <MemberBreakdown
+            breakdown={memberBreakdown}
+            total={totalSpent}
+            showLegend={true}
+            showAmounts={true}
+            className="text-white [&_span]:text-white/90 [&_.text-gray-700]:text-white [&_.text-gray-500]:text-white/70"
+          />
+        </div>
+      )}
     </Link>
   )
 }

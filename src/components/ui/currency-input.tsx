@@ -10,6 +10,7 @@ interface CurrencyInputProps {
   autoFocus?: boolean
   required?: boolean
   id?: string
+  isNegative?: boolean
 }
 
 export function CurrencyInput({
@@ -20,6 +21,7 @@ export function CurrencyInput({
   autoFocus = false,
   required = false,
   id,
+  isNegative = false,
 }: CurrencyInputProps) {
   const [displayValue, setDisplayValue] = useState('')
 
@@ -66,7 +68,9 @@ export function CurrencyInput({
 
   return (
     <div className="relative">
-      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-xl">$</span>
+      <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-medium text-xl ${isNegative ? 'text-red-500' : 'text-gray-400'}`}>
+        {isNegative ? '-$' : '$'}
+      </span>
       <input
         id={id}
         type="text"
@@ -74,7 +78,7 @@ export function CurrencyInput({
         value={displayValue}
         onChange={handleChange}
         placeholder={placeholder}
-        className={`input pl-10 text-2xl font-bold h-16 ${className}`}
+        className={`input ${isNegative ? 'pl-12' : 'pl-10'} text-2xl font-bold h-16 ${isNegative ? 'text-red-600' : ''} ${className}`}
         autoFocus={autoFocus}
         required={required}
       />

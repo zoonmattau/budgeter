@@ -18,6 +18,8 @@ export default async function BillsPage() {
     .order('next_due', { ascending: true })
 
   const totalMonthly = bills?.reduce((sum, bill) => {
+    // Exclude one-off bills from monthly estimate
+    if (bill.is_one_off) return sum
     const amount = Number(bill.amount)
     switch (bill.frequency) {
       case 'weekly': return sum + amount * 4.33
@@ -35,7 +37,7 @@ export default async function BillsPage() {
         <div>
           <h1 className="font-display text-2xl font-bold text-gray-900">Bills</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {bills?.length || 0} recurring bill{bills?.length !== 1 && 's'}
+            {bills?.length || 0} upcoming bill{bills?.length !== 1 ? 's' : ''}
           </p>
         </div>
         <Link href="/bills/new" className="btn-primary">

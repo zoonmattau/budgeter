@@ -7,7 +7,12 @@ if (!process.env.ANTHROPIC_API_KEY) {
   console.warn('Warning: ANTHROPIC_API_KEY is not set. Statement analysis will fail.')
 }
 
-const anthropic = new Anthropic()
+// Only create client if API key exists
+let anthropicClient: Anthropic | null = null
+if (process.env.ANTHROPIC_API_KEY) {
+  anthropicClient = new Anthropic()
+}
+
 
 function extractJSON(text: string): unknown {
   // Try to find JSON in code blocks first
@@ -28,8 +33,10 @@ function extractJSON(text: string): unknown {
 }
 
 export async function POST(request: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'Statement analysis is not configured. Please set up ANTHROPIC_API_KEY.' }, { status: 503 })
+  if (!process.env.ANTHROPIC_API_KEY || !anthropicClient) {
+    return NextResponse.json({
+      error: 'Statement analysis is not available. Please contact support or try again later.'
+    }, { status: 503 })
   }
 
   const supabase = await createClient()
@@ -64,9 +71,9 @@ export async function POST(request: NextRequest) {
 
     const categoryList = categories?.map(c => c.name).join(', ') || 'Groceries, Dining Out, Transport, Entertainment, Shopping, Utilities, Subscriptions'
 
-    // Use Claude to analyze the statement
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    // Use Claude to analyse the statement
+    const message = await anthropicClient.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 4096,
       messages: [
         {
@@ -130,14 +137,23 @@ ${content.slice(0, 50000)}`
     } catch (parseError) {
       console.error('JSON parse error:', parseError)
       return NextResponse.json({
-        error: 'Failed to parse analysis. The AI response was not valid JSON.',
-        raw: responseText.slice(0, 500)
+        error: 'Failed to parse the analysis. Please try a different file format or paste text directly.',
       }, { status: 500 })
     }
 
     return NextResponse.json(analysis)
   } catch (error) {
     console.error('Statement analysis error:', error)
-    return NextResponse.json({ error: 'Failed to analyze statement' }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    // Check for common errors
+    if (errorMessage.includes('API key')) {
+      return NextResponse.json({ error: 'Statement analysis is not available. Please try again later.' }, { status: 503 })
+    }
+    if (errorMessage.includes('rate limit')) {
+      return NextResponse.json({ error: 'Too many requests. Please wait a moment and try again.' }, { status: 429 })
+    }
+
+    return NextResponse.json({ error: 'Failed to analyse statement. Please check your file format and try again.' }, { status: 500 })
   }
 }

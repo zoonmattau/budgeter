@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { ArrowLeft, Wallet, Landmark, CreditCard, TrendingUp, Receipt, Trash2, Info, LineChart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
+import { AccountLogo } from '@/components/ui/account-logo'
+import { getBankLogo } from '@/lib/bank-logos'
 import { format } from 'date-fns'
 import type { Tables } from '@/lib/database.types'
 
@@ -189,10 +191,16 @@ export function EditAccountForm({ account }: EditAccountFormProps) {
             onChange={setBalance}
             placeholder="0"
             required
+            isNegative={!selectedType.isAsset}
           />
           {isInvestment && (
             <p className="text-xs text-gray-400 mt-1">
               Last updated: {format(new Date(account.updated_at), 'MMM d, yyyy')}
+            </p>
+          )}
+          {!selectedType.isAsset && (
+            <p className="text-xs text-gray-400 mt-1">
+              This amount will count against your net worth
             </p>
           )}
         </div>
@@ -214,13 +222,29 @@ export function EditAccountForm({ account }: EditAccountFormProps) {
 
         <div>
           <label className="label">Institution (optional)</label>
-          <input
-            type="text"
-            value={institution}
-            onChange={(e) => setInstitution(e.target.value)}
-            placeholder="e.g., CommBank, ANZ"
-            className="input"
-          />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={institution}
+                onChange={(e) => setInstitution(e.target.value)}
+                placeholder="e.g., CommBank, ANZ"
+                className="input"
+              />
+            </div>
+            {getBankLogo(institution) && (
+              <AccountLogo
+                institution={institution}
+                type={type}
+                size="lg"
+              />
+            )}
+          </div>
+          {institution && !getBankLogo(institution) && (
+            <p className="text-xs text-gray-400 mt-1">
+              No logo found - a default icon will be used
+            </p>
+          )}
         </div>
 
         {/* Credit Card & Loan specific fields */}
@@ -237,16 +261,21 @@ export function EditAccountForm({ account }: EditAccountFormProps) {
               <div className="space-y-4">
                 <div>
                   <label className="label">Interest Rate (% p.a.)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={interestRate}
-                    onChange={(e) => setInterestRate(e.target.value)}
-                    placeholder="e.g., 19.99"
-                    className="input"
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={interestRate}
+                      onChange={(e) => setInterestRate(e.target.value)}
+                      placeholder="e.g., 19.99"
+                      className="input pr-10"
+                    />
+                    {interestRate && (
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">%</span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-400 mt-1">
                     Annual interest rate - used to calculate interest charges
                   </p>

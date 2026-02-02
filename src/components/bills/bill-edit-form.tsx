@@ -19,7 +19,9 @@ interface BillEditFormProps {
   bill: BillWithCategory
 }
 
-const frequencies = [
+type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+
+const frequencies: { value: Frequency; label: string }[] = [
   { value: 'weekly', label: 'Weekly' },
   { value: 'fortnightly', label: 'Fortnightly' },
   { value: 'monthly', label: 'Monthly' },
@@ -248,7 +250,7 @@ export function BillEditForm({ bill }: BillEditFormProps) {
               name={bill.categories.name}
               color={bill.categories.color}
               icon={bill.categories.icon}
-              size="lg"
+              size="md"
             />
           )}
           <div className="flex-1">

@@ -3,11 +3,14 @@
 import { useState } from 'react'
 import { ArrowLeft, ArrowRight, UserPlus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { ContributionSetup } from './contribution-setup'
 
 interface JoinHouseholdFormProps {
   onBack: () => void
   onComplete: (householdId: string) => void
 }
+
+type Step = 'join' | 'success' | 'contribution'
 
 export function JoinHouseholdForm({ onBack, onComplete }: JoinHouseholdFormProps) {
   const [code, setCode] = useState('')
@@ -15,6 +18,7 @@ export function JoinHouseholdForm({ onBack, onComplete }: JoinHouseholdFormProps
   const [error, setError] = useState<string | null>(null)
   const [householdName, setHouseholdName] = useState<string | null>(null)
   const [householdId, setHouseholdId] = useState<string | null>(null)
+  const [step, setStep] = useState<Step>('join')
 
   const supabase = createClient()
 
@@ -75,9 +79,10 @@ export function JoinHouseholdForm({ onBack, onComplete }: JoinHouseholdFormProps
         return
       }
 
-      // Show success
+      // Show success step
       setHouseholdName(household.name)
       setHouseholdId(household.id)
+      setStep('success')
     } catch (err) {
       setError('An unexpected error occurred')
     }
@@ -92,8 +97,19 @@ export function JoinHouseholdForm({ onBack, onComplete }: JoinHouseholdFormProps
     setCode(cleaned.slice(0, 8))
   }
 
+  // Show contribution setup step
+  if (step === 'contribution' && householdId && householdName) {
+    return (
+      <ContributionSetup
+        householdId={householdId}
+        householdName={householdName}
+        onComplete={() => onComplete(householdId)}
+      />
+    )
+  }
+
   // Show success screen
-  if (householdName && householdId) {
+  if (step === 'success' && householdName && householdId) {
     return (
       <div className="text-center">
         <div className="w-16 h-16 rounded-full bg-sprout-100 flex items-center justify-center mx-auto mb-4">
@@ -107,10 +123,10 @@ export function JoinHouseholdForm({ onBack, onComplete }: JoinHouseholdFormProps
         </p>
 
         <button
-          onClick={() => onComplete(householdId)}
+          onClick={() => setStep('contribution')}
           className="btn-primary w-full"
         >
-          Continue
+          Next: Set Your Contribution
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

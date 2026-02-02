@@ -3,17 +3,28 @@
 import { format, isToday, isYesterday } from 'date-fns'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
+import { MemberBadge, getMemberIndex } from '@/components/ui/member-badge'
 import type { Tables } from '@/lib/database.types'
+import type { HouseholdMember } from '@/lib/scope-context'
 
 type TransactionWithCategory = Tables<'transactions'> & {
   categories: Tables<'categories'> | null
+  profiles?: { display_name: string | null } | null
 }
 
 interface RecentTransactionsProps {
   transactions: TransactionWithCategory[]
+  showMemberBadge?: boolean
+  members?: HouseholdMember[]
+  currentUserId?: string
 }
 
-export function RecentTransactions({ transactions }: RecentTransactionsProps) {
+export function RecentTransactions({
+  transactions,
+  showMemberBadge = false,
+  members = [],
+  currentUserId,
+}: RecentTransactionsProps) {
   if (transactions.length === 0) {
     return (
       <div className="card text-center py-6">
@@ -31,6 +42,9 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
         else if (isYesterday(date)) dateText = 'Yesterday'
 
         const isIncome = transaction.type === 'income'
+        const isOwnTransaction = transaction.user_id === currentUserId
+        const memberIndex = getMemberIndex(transaction.user_id, members)
+        const displayName = isOwnTransaction ? 'You' : transaction.profiles?.display_name || null
 
         return (
           <div
@@ -38,6 +52,13 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
             className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
           >
             <div className="flex items-center gap-3 min-w-0">
+              {showMemberBadge && (
+                <MemberBadge
+                  name={displayName}
+                  index={memberIndex}
+                  size="sm"
+                />
+              )}
               {transaction.categories && (
                 <CategoryChip
                   name={transaction.categories.name}

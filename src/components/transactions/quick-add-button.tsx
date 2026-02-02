@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2 } from 'lucide-react'
+import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2, TrendingUp } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -15,9 +15,10 @@ interface QuickAddButtonProps {
   expenseCategories: Tables<'categories'>[]
   incomeCategories: Tables<'categories'>[]
   creditCards?: Tables<'accounts'>[]
+  investmentAccounts?: Tables<'accounts'>[]
 }
 
-type TransactionType = 'expense' | 'income'
+type TransactionType = 'expense' | 'income' | 'subscription' | 'investment'
 type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
 
 // Quick-select presets for income
@@ -40,7 +41,7 @@ const RECURRING_SUGGESTIONS = [
   { name: 'Insurance', amount: 100, category: 'Insurance' },
 ]
 
-export function QuickAddButton({ expenseCategories, incomeCategories, creditCards = [] }: QuickAddButtonProps) {
+export function QuickAddButton({ expenseCategories, incomeCategories, creditCards = [], investmentAccounts = [] }: QuickAddButtonProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [transactionType, setTransactionType] = useState<TransactionType>('expense')
@@ -50,6 +51,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
   const [description, setDescription] = useState('')
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [selectedInvestmentId, setSelectedInvestmentId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
 
@@ -61,8 +63,11 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
 
   const supabase = createClient()
 
-  const categories = transactionType === 'expense' ? expenseCategories : incomeCategories
+  const categories = transactionType === 'income' ? incomeCategories : expenseCategories
   const isExpense = transactionType === 'expense'
+  const isSubscription = transactionType === 'subscription'
+  const isInvestment = transactionType === 'investment'
+  const requiresCategory = isExpense // Only regular expenses require category
 
   function resetForm() {
     setSelectedCategory(null)
@@ -73,6 +78,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
     setShowSuccess(false)
     setTransactionType('expense')
     setSelectedCardId(null)
+    setSelectedInvestmentId(null)
     setIsRecurring(false)
     setFrequency('monthly')
     setShowRecurringSuggestions(false)
@@ -93,7 +99,12 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
     setTransactionType(type)
     setSelectedCategory(null)
     setIncomePreset(null)
-    setIsRecurring(false)
+    setSelectedInvestmentId(null)
+    // Subscriptions and investments are always recurring
+    setIsRecurring(type === 'subscription' || type === 'investment')
+    if (type === 'subscription' || type === 'investment') {
+      setFrequency('monthly')
+    }
   }
 
   function handleIncomePreset(preset: string) {
@@ -125,16 +136,23 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    const hasValidSelection = isExpense
+    // Validation: expenses require category, subscriptions/investments just need amount + description
+    const hasValidSelection = requiresCategory
       ? selectedCategory
-      : (selectedCategory || incomePreset)
+      : isInvestment
+        ? (selectedInvestmentId && description)
+        : (isSubscription ? description : (selectedCategory || incomePreset))
 
     if (!hasValidSelection || !amount) return
 
+    // Investments require an account selection
+    if (isInvestment && !selectedInvestmentId) return
+
     setLoading(true)
 
-    const categoryId = selectedCategory?.id || incomeCategories[0]?.id
-    if (!categoryId) {
+    // For subscriptions/investments without category, use first expense category as fallback
+    const categoryId = selectedCategory?.id || expenseCategories[0]?.id
+    if (!categoryId && !isInvestment) {
       setLoading(false)
       return
     }
@@ -146,15 +164,15 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
       return
     }
 
-    // Create the transaction
+    // Create the transaction (investments are recorded as transfers to investment accounts)
     const { error } = await supabase.from('transactions').insert({
       user_id: user.id,
-      category_id: categoryId,
+      category_id: categoryId || expenseCategories[0]?.id,
       amount: parseFloat(amount),
-      type: transactionType,
+      type: isInvestment ? 'expense' : transactionType, // Investments are outflows
       description: description || selectedCategory?.name || incomePreset || 'Income',
       date: date,
-      account_id: isExpense && selectedCardId ? selectedCardId : null,
+      account_id: isExpense && selectedCardId ? selectedCardId : (isInvestment ? selectedInvestmentId : null),
       is_recurring: isRecurring,
     })
 
@@ -172,24 +190,39 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
       }
     }
 
-    // If recurring, create a bill automatically
-    if (!error && isRecurring && isExpense && description) {
+    // If investment contribution, update the investment account balance
+    if (!error && isInvestment && selectedInvestmentId) {
+      const account = investmentAccounts.find(a => a.id === selectedInvestmentId)
+      if (account) {
+        await supabase
+          .from('accounts')
+          .update({
+            balance: account.balance + parseFloat(amount),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', selectedInvestmentId)
+      }
+    }
+
+    // If recurring (subscription, expense, or investment), create a bill automatically
+    if (!error && isRecurring && (isExpense || isSubscription || isInvestment) && description) {
       const dueDay = new Date(date).getDate()
-      const nextDue = new Date()
-      nextDue.setDate(dueDay)
+      const nextDue = new Date(date) // Use selected date as base
+      // If selected date is in the past, move to next occurrence
       if (nextDue <= new Date()) {
         nextDue.setMonth(nextDue.getMonth() + 1)
       }
 
       const { error: billError } = await supabase.from('bills').insert({
         user_id: user.id,
-        category_id: categoryId,
+        category_id: categoryId || expenseCategories[0]?.id,
         name: description,
         amount: parseFloat(amount),
         frequency: frequency,
         due_day: dueDay,
         next_due: nextDue.toISOString().split('T')[0],
         is_active: true,
+        bill_type: isSubscription ? 'subscription' : 'bill',
       })
 
       if (!billError) {
@@ -213,9 +246,13 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
     setLoading(false)
   }
 
-  const hasValidSelection = isExpense
+  const hasValidSelection = requiresCategory
     ? selectedCategory
-    : (selectedCategory || incomePreset)
+    : isInvestment
+      ? (selectedInvestmentId && description)
+      : isSubscription
+        ? description
+        : (selectedCategory || incomePreset)
   const isFormValid = hasValidSelection && amount
 
   if (!isOpen) {
@@ -246,8 +283,10 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
       {/* Sheet */}
       <div className="relative w-full max-w-lg bg-white rounded-t-3xl p-6 pb-24 animate-slide-up max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 id="quick-add-title" className={`font-display text-xl font-semibold ${isExpense ? 'text-gray-900' : 'text-sprout-700'}`}>
-            {isExpense ? 'Add Expense' : 'Add Income'}
+          <h2 id="quick-add-title" className={`font-display text-xl font-semibold ${
+            isInvestment ? 'text-sprout-700' : isSubscription ? 'text-bloom-700' : isExpense ? 'text-gray-900' : 'text-sprout-700'
+          }`}>
+            {isInvestment ? 'Add Investment' : isSubscription ? 'Add Subscription' : isExpense ? 'Add Expense' : 'Add Income'}
           </h2>
           <button
             onClick={handleClose}
@@ -261,44 +300,87 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
         {/* Success State */}
         {showSuccess ? (
           <div className="py-12 text-center">
-            <div className={`w-16 h-16 rounded-full ${isExpense ? 'bg-bloom-100' : 'bg-sprout-100'} flex items-center justify-center mx-auto mb-4`}>
-              <CheckCircle2 className={`w-8 h-8 ${isExpense ? 'text-bloom-600' : 'text-sprout-600'}`} />
+            <div className={`w-16 h-16 rounded-full ${
+              isInvestment ? 'bg-sprout-100' : isSubscription ? 'bg-bloom-100' : isExpense ? 'bg-bloom-100' : 'bg-sprout-100'
+            } flex items-center justify-center mx-auto mb-4`}>
+              <CheckCircle2 className={`w-8 h-8 ${
+                isInvestment ? 'text-sprout-600' : isSubscription ? 'text-bloom-600' : isExpense ? 'text-bloom-600' : 'text-sprout-600'
+              }`} />
             </div>
             <h3 className="font-display text-xl font-semibold text-gray-900 mb-2">
-              {isExpense ? 'Expense Added!' : 'Income Added!'}
+              {isInvestment ? 'Investment Added!' : isSubscription ? 'Subscription Added!' : isExpense ? 'Expense Added!' : 'Income Added!'}
             </h3>
             <p className="text-gray-500 text-sm">
-              {billCreated
-                ? 'Your transaction was saved and a recurring bill was created.'
-                : `Your ${isExpense ? 'expense' : 'income'} has been recorded.`}
+              {isInvestment
+                ? 'Your investment contribution has been recorded.'
+                : isSubscription || billCreated
+                  ? 'Your subscription has been added to upcoming bills.'
+                  : `Your ${isExpense ? 'expense' : 'income'} has been recorded.`}
             </p>
           </div>
         ) : (
           <>
             {/* Type Toggle */}
             <div className="mb-5">
-              <TogglePills
-                options={[
-                  { value: 'expense', label: 'Expense' },
-                  { value: 'income', label: 'Income' },
-                ]}
-                value={transactionType}
-                onChange={handleTypeChange}
-                variant="expense-income"
-              />
+              <div className="grid grid-cols-4 gap-1 bg-gray-100 rounded-xl p-1">
+                <button
+                  type="button"
+                  onClick={() => handleTypeChange('expense')}
+                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                    transactionType === 'expense'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Expense
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTypeChange('income')}
+                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                    transactionType === 'income'
+                      ? 'bg-white text-sprout-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Income
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTypeChange('subscription')}
+                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                    transactionType === 'subscription'
+                      ? 'bg-white text-bloom-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Recurring
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTypeChange('investment')}
+                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                    transactionType === 'investment'
+                      ? 'bg-white text-sprout-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Invest
+                </button>
+              </div>
             </div>
 
             {/* Bill Created Success */}
             {billCreated && (
               <div className="mb-4 p-3 bg-sprout-50 rounded-xl flex items-center gap-2 text-sprout-700">
                 <Calendar className="w-4 h-4" />
-                <span className="text-sm font-medium">Bill created! It'll appear in upcoming bills.</span>
+                <span className="text-sm font-medium">Bill created! It&apos;ll appear in upcoming bills.</span>
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Quick Recurring Suggestions - for expenses only */}
-          {isExpense && !selectedCategory && !amount && (
+          {/* Quick Recurring Suggestions - for expenses and subscriptions */}
+          {(isExpense || isSubscription) && !selectedCategory && !amount && (
             <div>
               <button
                 type="button"
@@ -338,10 +420,12 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             />
           </div>
 
-          {/* Category - for expenses */}
-          {isExpense && (
+          {/* Category - for expenses (required) and subscriptions (optional) */}
+          {(isExpense || isSubscription) && (
             <div>
-              <label className="label">Category</label>
+              <label className="label">
+                Category {isSubscription && <span className="text-gray-400 font-normal">(optional)</span>}
+              </label>
               <div className="grid grid-cols-4 gap-2">
                 {categories.slice(0, 8).map((cat) => (
                   <button
@@ -364,6 +448,40 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Investment Account Selection - for investments */}
+          {isInvestment && (
+            <div>
+              <label className="label">Investment Account</label>
+              {investmentAccounts.length === 0 ? (
+                <div className="p-4 bg-amber-50 rounded-xl text-center">
+                  <TrendingUp className="w-6 h-6 text-amber-500 mx-auto mb-2" />
+                  <p className="text-sm text-amber-700 font-medium">No investment accounts yet</p>
+                  <p className="text-xs text-amber-600 mt-1">
+                    Add an investment account in Net Worth to track contributions
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {investmentAccounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => setSelectedInvestmentId(account.id)}
+                      className={`px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
+                        selectedInvestmentId === account.id
+                          ? 'bg-sprout-100 text-sprout-700 border-2 border-sprout-500'
+                          : 'bg-gray-100 text-gray-600 hover:bg-sprout-50 border-2 border-transparent'
+                      }`}
+                    >
+                      <TrendingUp className="w-4 h-4" />
+                      {account.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -421,7 +539,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             </div>
           )}
 
-          {/* Recurring Toggle - for expenses only */}
+          {/* Recurring Toggle - for expenses only (not subscriptions/investments, they're always recurring) */}
           {isExpense && (
             <div className="p-4 bg-gray-50 rounded-xl">
               <div className="flex items-center justify-between">
@@ -462,10 +580,35 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                     ))}
                   </div>
                   <p className="text-xs text-bloom-600 mt-2">
-                    We'll automatically add this to your upcoming bills
+                    We&apos;ll automatically add this to your upcoming bills
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Frequency selector - for subscriptions and investments */}
+          {(isSubscription || isInvestment) && (
+            <div className={`p-4 rounded-xl ${isInvestment ? 'bg-sprout-50' : 'bg-bloom-50'}`}>
+              <label className={`text-sm font-medium mb-2 block ${isInvestment ? 'text-sprout-700' : 'text-bloom-700'}`}>
+                {isInvestment ? 'How often do you contribute?' : 'How often is this charged?'}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {(['weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly'] as Frequency[]).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFrequency(f)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      frequency === f
+                        ? isInvestment ? 'bg-sprout-500 text-white' : 'bg-bloom-500 text-white'
+                        : isInvestment ? 'bg-white text-sprout-600 hover:bg-sprout-100' : 'bg-white text-bloom-600 hover:bg-bloom-100'
+                    }`}
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -511,40 +654,48 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
 
           {/* Date */}
           <DatePicker
-            label="Date"
+            label={isSubscription || isInvestment ? 'Next Payment Date' : 'Date'}
             value={date}
             onChange={setDate}
+            allowFuture={isSubscription || isInvestment}
           />
 
           {/* Description */}
           <div>
             <label className="label">
-              Description {isRecurring ? '' : '(optional)'}
+              {isInvestment ? 'Investment Name' : 'Description'} {!isRecurring && !isSubscription && !isInvestment && '(optional)'}
             </label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder={isRecurring ? 'e.g., Netflix, Gym membership' : isExpense ? 'What was this for?' : 'e.g., Tax refund from ATO'}
+              placeholder={
+                isInvestment ? 'e.g., Vanguard ETF, Bitcoin, Super' :
+                isSubscription ? 'e.g., Netflix, Spotify, Gym' :
+                isRecurring ? 'e.g., Netflix, Gym membership' :
+                isExpense ? 'What was this for?' : 'e.g., Tax refund from ATO'
+              }
               className="input"
-              required={isRecurring}
+              required={isRecurring || isSubscription || isInvestment}
             />
-            {isRecurring && !description && (
-              <p className="text-xs text-amber-600 mt-1">Required for creating a bill</p>
+            {(isRecurring || isSubscription || isInvestment) && !description && (
+              <p className="text-xs text-amber-600 mt-1">
+                {isInvestment ? 'Required to track your investment' : 'Required for creating a bill'}
+              </p>
             )}
           </div>
 
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading || !isFormValid || (isRecurring && !description)}
+            disabled={loading || !isFormValid || ((isRecurring || isSubscription || isInvestment) && !description)}
             className={`w-full py-3 px-4 rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-              isExpense
+              isExpense || isSubscription
                 ? 'bg-gradient-to-r from-bloom-500 to-bloom-600 text-white shadow-lg shadow-bloom-500/30 hover:shadow-bloom-500/40'
                 : 'bg-gradient-to-r from-sprout-500 to-sprout-600 text-white shadow-lg shadow-sprout-500/30 hover:shadow-sprout-500/40'
             }`}
           >
-            {loading ? 'Saving...' : isRecurring ? 'Save & Create Bill' : 'Save'}
+            {loading ? 'Saving...' : isInvestment ? 'Add Investment' : isSubscription ? 'Add Subscription' : isRecurring ? 'Save & Create Bill' : 'Save'}
           </button>
         </form>
           </>

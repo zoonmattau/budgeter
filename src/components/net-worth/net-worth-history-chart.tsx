@@ -52,6 +52,8 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
   const minValue = Math.min(...chartData.map((d) => d.netWorth))
   const maxValue = Math.max(...chartData.map((d) => d.netWorth))
   const hasNegative = minValue < 0
+  const currentNetWorth = chartData[chartData.length - 1]?.netWorth ?? 0
+  const isCurrentlyNegative = currentNetWorth < 0
 
   return (
     <div className="space-y-4">
@@ -64,8 +66,8 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
               <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="netWorthGradientNegative" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#ef4444" stopOpacity={0} />
-              <stop offset="95%" stopColor="#ef4444" stopOpacity={0.3} />
+              <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
             </linearGradient>
           </defs>
 
@@ -112,9 +114,9 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
           <Area
             type="monotone"
             dataKey="netWorth"
-            stroke="#22c55e"
+            stroke={isCurrentlyNegative ? '#ef4444' : '#22c55e'}
             strokeWidth={2}
-            fill="url(#netWorthGradient)"
+            fill={isCurrentlyNegative ? 'url(#netWorthGradientNegative)' : 'url(#netWorthGradient)'}
           />
         </AreaChart>
       </ChartWrapper>

@@ -429,6 +429,65 @@ export function BudgetWizard({
         }
       }
 
+      // Create bills for subscriptions
+      if (subscriptions.length > 0) {
+        // Find or create Subscriptions category
+        let subscriptionCategoryId: string | null = null
+        const existingSubCat = existingCategories.find(
+          c => c.name.toLowerCase() === 'subscriptions'
+        )
+
+        if (existingSubCat) {
+          subscriptionCategoryId = existingSubCat.id
+        } else {
+          const { data: newCat } = await supabase
+            .from('categories')
+            .select()
+            .eq('user_id', user.id)
+            .eq('name', 'Subscriptions')
+            .single()
+
+          if (newCat) {
+            subscriptionCategoryId = newCat.id
+          }
+        }
+
+        if (subscriptionCategoryId) {
+          for (const sub of subscriptions) {
+            // Map frequency to bill frequency
+            const billFrequency = sub.frequency === 'weekly' ? 'weekly'
+              : sub.frequency === 'yearly' ? 'yearly'
+              : 'monthly'
+
+            // Calculate next due date (1st of next month for monthly, etc.)
+            const today = new Date()
+            const nextDue = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+
+            // Check if bill already exists with same name
+            const { data: existingBill } = await supabase
+              .from('bills')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('name', sub.name)
+              .single()
+
+            if (!existingBill) {
+              await supabase.from('bills').insert({
+                user_id: user.id,
+                name: sub.name,
+                amount: sub.amount,
+                frequency: billFrequency,
+                due_day: 1,
+                next_due: nextDue.toISOString().split('T')[0],
+                category_id: subscriptionCategoryId,
+                is_active: true,
+                bill_type: 'subscription',
+              })
+            }
+          }
+        }
+      }
+
       // Create savings category and allocation if there's money left
       if (remaining > 0) {
         let savingsCategoryId: string | null = null

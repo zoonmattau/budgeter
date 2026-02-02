@@ -3,11 +3,14 @@
 import { useState } from 'react'
 import { ArrowLeft, ArrowRight, Copy, Check, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { ContributionSetup } from './contribution-setup'
 
 interface CreateHouseholdFormProps {
   onBack: () => void
   onComplete: (householdId: string) => void
 }
+
+type Step = 'create' | 'invite' | 'contribution'
 
 export function CreateHouseholdForm({ onBack, onComplete }: CreateHouseholdFormProps) {
   const [name, setName] = useState('')
@@ -16,6 +19,7 @@ export function CreateHouseholdForm({ onBack, onComplete }: CreateHouseholdFormP
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [householdId, setHouseholdId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [step, setStep] = useState<Step>('create')
 
   const supabase = createClient()
 
@@ -69,9 +73,10 @@ export function CreateHouseholdForm({ onBack, onComplete }: CreateHouseholdFormP
         return
       }
 
-      // Show invite code
+      // Show invite code step
       setInviteCode(code)
       setHouseholdId(household.id)
+      setStep('invite')
     } catch (err) {
       setError('An unexpected error occurred')
     }
@@ -95,8 +100,19 @@ export function CreateHouseholdForm({ onBack, onComplete }: CreateHouseholdFormP
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Show contribution setup step
+  if (step === 'contribution' && householdId) {
+    return (
+      <ContributionSetup
+        householdId={householdId}
+        householdName={name}
+        onComplete={() => onComplete(householdId)}
+      />
+    )
+  }
+
   // Show success screen with invite code
-  if (inviteCode && householdId) {
+  if (step === 'invite' && inviteCode && householdId) {
     return (
       <div>
         <div className="text-center mb-6">
@@ -138,10 +154,10 @@ export function CreateHouseholdForm({ onBack, onComplete }: CreateHouseholdFormP
         </p>
 
         <button
-          onClick={() => onComplete(householdId)}
+          onClick={() => setStep('contribution')}
           className="btn-primary w-full"
         >
-          Continue
+          Next: Set Your Contribution
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

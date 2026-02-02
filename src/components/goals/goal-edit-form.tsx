@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2, Plus, Calendar, CreditCard, Target, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Trash2, Plus, Calendar, CreditCard, Target, CheckCircle2, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
@@ -11,12 +11,21 @@ import { formatCurrency } from '@/lib/utils'
 import { PlantVisual } from './plant-visual'
 import type { Tables } from '@/lib/database.types'
 
+interface Contribution {
+  user_id: string
+  total: number
+  display_name: string | null
+}
+
 interface GoalEditFormProps {
   goal: Tables<'goals'>
   linkedAccount: Tables<'accounts'> | null
+  isHouseholdGoal?: boolean
+  contributions?: Contribution[]
+  currentUserId?: string
 }
 
-export function GoalEditForm({ goal, linkedAccount }: GoalEditFormProps) {
+export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributions = [], currentUserId }: GoalEditFormProps) {
   const router = useRouter()
   const [name, setName] = useState(goal.name)
   const [targetAmount, setTargetAmount] = useState(String(goal.target_amount))
@@ -68,20 +77,49 @@ export function GoalEditForm({ goal, linkedAccount }: GoalEditFormProps) {
     if (!addAmount || parseFloat(addAmount) <= 0) return
 
     setLoading(true)
-    const newAmount = parseFloat(currentAmount) + parseFloat(addAmount)
+    const amountToAdd = parseFloat(addAmount)
+    const newAmount = parseFloat(currentAmount) + amountToAdd
 
-    const { error: updateError } = await supabase
-      .from('goals')
-      .update({
-        current_amount: newAmount,
-        updated_at: new Date().toISOString(),
+    // Get current user for contribution tracking
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    // Create contribution record
+    const { error: contribError } = await supabase
+      .from('goal_contributions')
+      .insert({
+        goal_id: goal.id,
+        user_id: user.id,
+        amount: amountToAdd,
+        source: 'manual',
+        date: new Date().toISOString().split('T')[0],
       })
-      .eq('id', goal.id)
 
-    if (!updateError) {
+    if (contribError) {
+      console.error('Error creating contribution:', contribError)
+      // Fall back to just updating the goal directly
+      const { error: updateError } = await supabase
+        .from('goals')
+        .update({
+          current_amount: newAmount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', goal.id)
+
+      if (!updateError) {
+        setCurrentAmount(String(newAmount))
+        setAddAmount('')
+        setShowAddFunds(false)
+      }
+    } else {
+      // Contribution created - the trigger should update the goal
       setCurrentAmount(String(newAmount))
       setAddAmount('')
       setShowAddFunds(false)
+      router.refresh()
     }
 
     setLoading(false)
@@ -270,6 +308,69 @@ export function GoalEditForm({ goal, linkedAccount }: GoalEditFormProps) {
           <p className="text-xs text-gray-400 mt-3">
             This goal automatically updates when the linked account balance changes.
           </p>
+        </div>
+      )}
+
+      {/* Household Contributions Breakdown */}
+      {isHouseholdGoal && contributions.length > 0 && (
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="w-5 h-5 text-bloom-500" />
+            <h3 className="font-semibold text-gray-900">Contributions</h3>
+          </div>
+
+          <div className="space-y-3">
+            {contributions
+              .sort((a, b) => b.total - a.total)
+              .map((contrib) => {
+                const percentage = Number(currentAmount) > 0
+                  ? (contrib.total / Number(currentAmount)) * 100
+                  : 0
+                const isCurrentUser = contrib.user_id === currentUserId
+
+                return (
+                  <div key={contrib.user_id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-gray-700">
+                        {contrib.display_name || 'User'}
+                        {isCurrentUser && <span className="text-gray-400 ml-1">(you)</span>}
+                      </span>
+                      <div className="text-right">
+                        <span className="text-sm font-medium text-gray-900">
+                          {formatCurrency(contrib.total)}
+                        </span>
+                        <span className="text-xs text-gray-400 ml-2">
+                          {percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          isCurrentUser ? 'bg-bloom-500' : 'bg-sprout-400'
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+
+          <p className="text-xs text-gray-400 mt-4">
+            This is a shared household goal. All members can contribute.
+          </p>
+        </div>
+      )}
+
+      {/* Household goal badge */}
+      {isHouseholdGoal && contributions.length === 0 && (
+        <div className="bg-bloom-50 rounded-xl p-4 flex gap-3">
+          <Users className="w-5 h-5 text-bloom-600 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-bloom-800">Shared Household Goal</p>
+            <p className="text-bloom-600">All household members can contribute to this goal.</p>
+          </div>
         </div>
       )}
 

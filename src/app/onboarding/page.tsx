@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { ArrowRight, ArrowLeft, Sparkles, Phone } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowRight, ArrowLeft, Sparkles, Phone, Users, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { HouseholdStep } from '@/components/household/household-step'
+import { clearStoredInviteCode } from '@/lib/invitations'
 
 type Step = 'welcome' | 'income' | 'household' | 'goal' | 'complete'
 
@@ -14,18 +15,42 @@ const STEPS: Step[] = ['welcome', 'income', 'household', 'goal', 'complete']
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [step, setStep] = useState<Step>('welcome')
   const [displayName, setDisplayName] = useState('')
   const [mobile, setMobile] = useState('')
   const [income, setIncome] = useState('')
   const [incomeSource, setIncomeSource] = useState('Salary')
   const [householdId, setHouseholdId] = useState<string | null>(null)
+  const [preJoinedHouseholdName, setPreJoinedHouseholdName] = useState<string | null>(null)
   const [goalName, setGoalName] = useState('')
   const [goalAmount, setGoalAmount] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
+
+  // Check for pre-joined household from invite flow
+  useEffect(() => {
+    const joinedHouseholdId = searchParams.get('joined')
+    if (joinedHouseholdId) {
+      setHouseholdId(joinedHouseholdId)
+      // Clear any stored invite code
+      clearStoredInviteCode()
+      // Fetch household name
+      async function fetchHouseholdName() {
+        const { data } = await supabase
+          .from('households')
+          .select('name')
+          .eq('id', joinedHouseholdId)
+          .single()
+        if (data) {
+          setPreJoinedHouseholdName(data.name)
+        }
+      }
+      fetchHouseholdName()
+    }
+  }, [searchParams, supabase])
 
   async function handleComplete() {
     setLoading(true)
@@ -164,10 +189,18 @@ export default function OnboardingPage() {
         )}
 
         {step === 'household' && (
-          <HouseholdStep
-            onBack={() => setStep('income')}
-            onNext={handleHouseholdComplete}
-          />
+          preJoinedHouseholdName ? (
+            <PreJoinedHouseholdStep
+              householdName={preJoinedHouseholdName}
+              onBack={() => setStep('income')}
+              onNext={() => setStep('goal')}
+            />
+          ) : (
+            <HouseholdStep
+              onBack={() => setStep('income')}
+              onNext={handleHouseholdComplete}
+            />
+          )
         )}
 
         {step === 'goal' && (
@@ -427,6 +460,56 @@ function GoalStep({
       >
         Skip for now
       </button>
+    </div>
+  )
+}
+
+function PreJoinedHouseholdStep({
+  householdName,
+  onBack,
+  onNext,
+}: {
+  householdName: string
+  onBack: () => void
+  onNext: () => void
+}) {
+  return (
+    <div>
+      <div className="text-center mb-6">
+        <div className="w-20 h-20 rounded-full bg-sprout-100 flex items-center justify-center mx-auto mb-4">
+          <Check className="w-10 h-10 text-sprout-600" />
+        </div>
+
+        <h1 className="font-display text-2xl font-bold text-gray-900 mb-2">
+          You&apos;ve joined {householdName}!
+        </h1>
+
+        <p className="text-gray-500 text-sm">
+          You&apos;re now part of this household and can share budgets and goals with other members.
+        </p>
+      </div>
+
+      <div className="card mb-8">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-bloom-100 flex items-center justify-center flex-shrink-0">
+            <Users className="w-6 h-6 text-bloom-600" />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">{householdName}</p>
+            <p className="text-sm text-sprout-600">Successfully joined</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={onBack} className="btn-secondary">
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <button onClick={onNext} className="btn-primary flex-1">
+          Continue
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   )
 }
