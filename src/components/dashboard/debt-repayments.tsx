@@ -220,8 +220,9 @@ function calculatePaymentSuggestions(
     // Ensure suggested amount doesn't exceed balance
     suggestedAmount = Math.min(suggestedAmount, account.balance)
 
-    // Round to 2 decimal places
-    suggestedAmount = Math.round(suggestedAmount * 100) / 100
+    // Round to nearest $10 (unless it would exceed balance)
+    const rounded = Math.round(suggestedAmount / 10) * 10
+    suggestedAmount = Math.min(rounded, account.balance)
 
     // Deduct from remaining funds
     remainingFunds = Math.max(0, remainingFunds - suggestedAmount)

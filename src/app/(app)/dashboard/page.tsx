@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { BudgetOverview } from '@/components/dashboard/budget-overview'
 import { BillsSummary } from '@/components/dashboard/bills-summary'
@@ -8,11 +7,12 @@ import { UpcomingBills } from '@/components/dashboard/upcoming-bills'
 import { DebtRepayments } from '@/components/dashboard/debt-repayments'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
-import { QuickLinks } from '@/components/dashboard/quick-links'
-import { SpendingSnapshot } from '@/components/dashboard/spending-snapshot'
+import { InsightsTeaser } from '@/components/dashboard/quick-links'
 import { NetWorthCard } from '@/components/dashboard/net-worth-card'
 import { SmartPredictions } from '@/components/dashboard/smart-predictions'
+import { CreditLimitWarning } from '@/components/dashboard/credit-limit-warning'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { CashflowPreview } from '@/components/dashboard/cashflow-preview'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
 import { format, startOfMonth, addDays, subDays } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
@@ -89,6 +89,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     { data: incomeCategories },
     { data: accounts },
     { data: predictions },
+    { data: recurringIncome },
+    { data: allBills },
   ] = await Promise.all([
     // Income entries - scope aware
     scope === 'household' && householdId
@@ -117,18 +119,21 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .eq('month', currentMonth),
 
     // Transactions - scope aware with profile data for household view
+    // Filter to current month but exclude future dates
     scope === 'household' && householdId
       ? supabase
           .from('transactions')
           .select('*, categories(*), profiles:user_id(display_name)')
           .eq('household_id', householdId)
           .gte('date', currentMonth)
+          .lte('date', format(today, 'yyyy-MM-dd'))
           .order('date', { ascending: false })
       : supabase
           .from('transactions')
           .select('*, categories(*)')
           .eq('user_id', user.id)
           .gte('date', currentMonth)
+          .lte('date', format(today, 'yyyy-MM-dd'))
           .order('date', { ascending: false }),
 
     // Goals - scope aware
@@ -215,6 +220,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .gte('predicted_date', threeDaysAgo.toISOString().split('T')[0])
       .lte('predicted_date', sevenDaysFromNow.toISOString().split('T')[0])
       .order('predicted_date', { ascending: true }),
+
+    // Recurring income for cash flow (personal only)
+    supabase
+      .from('income_entries')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_recurring', true),
+
+    // All active bills for cash flow (personal only)
+    supabase
+      .from('bills')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_active', true),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
@@ -305,8 +324,26 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // Cast transactions for components
   const typedTransactions = (transactions || []) as (typeof transactions extends (infer T)[] | null ? T & { profiles?: { display_name: string | null } | null } : never)[]
 
+  // Calculate daily spending stats for insights teaser
+  const daysInMonth = new Date().getDate()
+  const dailyAverage = daysInMonth > 0 ? totalSpent / daysInMonth : 0
+  const dailyTarget = totalAllocated / 30
+
+  // Find top spending category
+  const spendingByCategory = new Map<string, { name: string; amount: number; color: string }>()
+  typedTransactions
+    .filter(t => t.type === 'expense' && t.categories)
+    .forEach(t => {
+      const cat = t.categories!
+      const current = spendingByCategory.get(cat.id) || { name: cat.name, amount: 0, color: cat.color }
+      current.amount += Number(t.amount)
+      spendingByCategory.set(cat.id, current)
+    })
+  const topCategory = Array.from(spendingByCategory.values())
+    .sort((a, b) => b.amount - a.amount)[0] || null
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       {/* Greeting with Scope Toggle */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -336,15 +373,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         totalLiabilities={totalLiabilities}
       />
 
-      {/* Quick Links */}
-      <QuickLinks />
+      {/* Cash Flow Preview */}
+      <CashflowPreview
+        accounts={accounts || []}
+        incomeEntries={recurringIncome || []}
+        bills={allBills || []}
+      />
 
-      {/* Spending Snapshot */}
-      <SpendingSnapshot
+      {/* Credit Limit Warning */}
+      <CreditLimitWarning creditCards={creditCards} />
+
+      {/* Insights Teaser with Donut Chart */}
+      <InsightsTeaser
+        totalSpent={totalSpent}
+        dailyAverage={dailyAverage}
+        dailyTarget={dailyTarget}
+        topCategory={topCategory}
         transactions={typedTransactions}
-        scope={scope}
-        members={members}
-        currentUserId={user.id}
       />
 
       {/* Activity Feed - only shown in household view */}
@@ -416,6 +461,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </div>
         <RecentTransactions
           transactions={typedTransactions.slice(0, 5)}
+          categories={[...(expenseCategories || []), ...(incomeCategories || [])]}
+          creditCards={creditCards}
           showMemberBadge={scope === 'household'}
           members={members}
           currentUserId={user.id}

@@ -10,7 +10,7 @@ interface MoneyBucketsOverviewProps {
 }
 
 export function MoneyBucketsOverview({
-  budgetAllocated,
+  budgetAllocated: _budgetAllocated,
   budgetRemaining,
   savingsTotal,
   accountsTotal,

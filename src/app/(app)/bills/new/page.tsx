@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Receipt, Tv } from 'lucide-react'
-import { addMonths, addWeeks, format } from 'date-fns'
+import { ArrowLeft } from 'lucide-react'
+import { addMonths, format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { CurrencyInput } from '@/components/ui/currency-input'
@@ -24,7 +24,6 @@ export default function NewBillPage() {
   const [categories, setCategories] = useState<Tables<'categories'>[]>([])
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
-  const [billType, setBillType] = useState<'bill' | 'subscription'>('bill')
   const [frequency, setFrequency] = useState('monthly')
   const [dueDay, setDueDay] = useState(new Date().getDate().toString())
   const [dueDate, setDueDate] = useState(format(new Date(), 'yyyy-MM-dd'))
@@ -33,6 +32,11 @@ export default function NewBillPage() {
   const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
+
+  const isWeeklyOrFortnightly = frequency === 'weekly' || frequency === 'fortnightly'
+  const isQuarterlyOrYearly = frequency === 'quarterly' || frequency === 'yearly'
+  const isMonthly = frequency === 'monthly'
+  const isOneOff = frequency === 'once'
 
   useEffect(() => {
     async function loadCategories() {
@@ -48,7 +52,6 @@ export default function NewBillPage() {
 
       if (data) {
         setCategories(data)
-        // Default to Utilities or first category
         const utilities = data.find(c => c.name === 'Utilities')
         setCategoryId(utilities?.id || data[0]?.id || '')
       }
@@ -57,37 +60,19 @@ export default function NewBillPage() {
   }, [supabase])
 
   function calculateNextDue(): string {
-    // For one-off bills, use the specific date
-    if (frequency === 'once') {
+    const today = new Date()
+
+    if (isOneOff || isQuarterlyOrYearly || isWeeklyOrFortnightly) {
       return dueDate
     }
 
-    const today = new Date()
+    // Monthly
     const parsedDay = parseInt(dueDay, 10)
-    // Clamp day to valid range (1-31)
     const day = isNaN(parsedDay) ? 1 : Math.max(1, Math.min(31, parsedDay))
-
     let nextDue = new Date(today.getFullYear(), today.getMonth(), day)
 
-    // If the day has passed this month/week, move to next period
     if (nextDue <= today) {
-      switch (frequency) {
-        case 'weekly':
-          nextDue = addWeeks(nextDue, 1)
-          break
-        case 'fortnightly':
-          nextDue = addWeeks(nextDue, 2)
-          break
-        case 'monthly':
-          nextDue = addMonths(nextDue, 1)
-          break
-        case 'quarterly':
-          nextDue = addMonths(nextDue, 3)
-          break
-        case 'yearly':
-          nextDue = addMonths(nextDue, 12)
-          break
-      }
+      nextDue = addMonths(nextDue, 1)
     }
 
     return format(nextDue, 'yyyy-MM-dd')
@@ -99,17 +84,23 @@ export default function NewBillPage() {
 
     if (!name || !amount || !categoryId) return
 
-    // Validate due day for recurring bills
+    // Validate based on frequency
     let parsedDueDay = 1
-    if (frequency !== 'once') {
+
+    if (isMonthly) {
       parsedDueDay = parseInt(dueDay, 10)
       if (isNaN(parsedDueDay) || parsedDueDay < 1 || parsedDueDay > 31) {
         setError('Please enter a valid due day (1-31)')
         return
       }
+    } else if (isWeeklyOrFortnightly) {
+      // Store day of week (0-6) from selected date
+      parsedDueDay = new Date(dueDate).getDay()
+    } else if (isQuarterlyOrYearly || isOneOff) {
+      // Store day of month from the selected date
+      parsedDueDay = new Date(dueDate).getDate()
     }
 
-    // Validate amount
     const parsedAmount = parseFloat(amount)
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setError('Please enter a valid amount')
@@ -125,18 +116,15 @@ export default function NewBillPage() {
       return
     }
 
-    const isOneOff = frequency === 'once'
-
     const { error: insertError } = await supabase.from('bills').insert({
       user_id: user.id,
       name,
       amount: parsedAmount,
       frequency: isOneOff ? 'monthly' : frequency as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly',
-      due_day: isOneOff ? new Date(dueDate).getDate() : parsedDueDay,
+      due_day: parsedDueDay,
       next_due: calculateNextDue(),
       category_id: categoryId,
       is_one_off: isOneOff,
-      bill_type: billType,
     })
 
     if (insertError) {
@@ -157,49 +145,18 @@ export default function NewBillPage() {
           <ArrowLeft className="w-5 h-5 text-gray-500" />
         </Link>
         <h1 className="font-display text-2xl font-bold text-gray-900">
-          Add {billType === 'subscription' ? 'Subscription' : 'Bill'}
+          Add Bill
         </h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Bill Type Toggle */}
         <div>
-          <label className="label">Type</label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setBillType('bill')}
-              className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-all ${
-                billType === 'bill'
-                  ? 'border-amber-500 bg-amber-50 text-amber-700'
-                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              <Receipt className="w-4 h-4" />
-              Bill
-            </button>
-            <button
-              type="button"
-              onClick={() => setBillType('subscription')}
-              className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-all ${
-                billType === 'subscription'
-                  ? 'border-purple-500 bg-purple-50 text-purple-700'
-                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              <Tv className="w-4 h-4" />
-              Subscription
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <label className="label">{billType === 'subscription' ? 'Subscription Name' : 'Bill Name'}</label>
+          <label className="label">Bill Name</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={billType === 'subscription' ? 'e.g., Netflix' : 'e.g., Electricity'}
+            placeholder="e.g., Netflix, Electricity"
             className="input"
             required
           />
@@ -235,7 +192,8 @@ export default function NewBillPage() {
           </div>
         </div>
 
-        {frequency === 'once' ? (
+        {/* One-off: Calendar picker */}
+        {isOneOff && (
           <div>
             <label className="label">Due Date</label>
             <input
@@ -250,9 +208,31 @@ export default function NewBillPage() {
               When is this payment due?
             </p>
           </div>
-        ) : (
+        )}
+
+        {/* Weekly/Fortnightly: Date picker for next due date */}
+        {isWeeklyOrFortnightly && (
           <div>
-            <label className="label">Due Day</label>
+            <label className="label">First Due Date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="input"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              {frequency === 'weekly'
+                ? 'Select the first due date - we\'ll repeat every week'
+                : 'Select the first due date - we\'ll repeat every 2 weeks'}
+            </p>
+          </div>
+        )}
+
+        {/* Monthly: Day of month */}
+        {isMonthly && (
+          <div>
+            <label className="label">Due Day of Month</label>
             <input
               type="number"
               min="1"
@@ -263,7 +243,27 @@ export default function NewBillPage() {
               required
             />
             <p className="text-xs text-gray-400 mt-1">
-              Day of the month the bill is due
+              Day of the month the bill is due (1-31)
+            </p>
+          </div>
+        )}
+
+        {/* Quarterly/Yearly: Calendar picker for first occurrence */}
+        {isQuarterlyOrYearly && (
+          <div>
+            <label className="label">First Due Date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              min={format(new Date(), 'yyyy-MM-dd')}
+              className="input"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              {frequency === 'quarterly'
+                ? 'Select the first due date - we\'ll repeat every 3 months'
+                : 'Select the first due date - we\'ll repeat every year'}
             </p>
           </div>
         )}
@@ -305,7 +305,7 @@ export default function NewBillPage() {
           disabled={loading || !name || !amount || !categoryId}
           className="btn-primary w-full"
         >
-          {loading ? 'Adding...' : `Add ${billType === 'subscription' ? 'Subscription' : 'Bill'}`}
+          {loading ? 'Adding...' : 'Add Bill'}
         </button>
       </form>
     </div>

@@ -13,29 +13,36 @@ type Budget = Tables<'budgets'> & {
 export function aggregateSpendingByCategory(
   transactions: Transaction[],
   limit = 5
-): { name: string; value: number; color: string }[] {
-  const categoryMap = new Map<string, { name: string; value: number; color: string }>()
+): { name: string; value: number; color: string; count: number; percent?: number }[] {
+  const categoryMap = new Map<string, { name: string; value: number; color: string; count: number }>()
 
-  transactions
-    .filter((t) => t.type === 'expense')
-    .forEach((t) => {
-      const categoryId = t.category_id
-      const existing = categoryMap.get(categoryId)
+  const expenseTransactions = transactions.filter((t) => t.type === 'expense')
+  const totalSpent = expenseTransactions.reduce((sum, t) => sum + Number(t.amount), 0)
 
-      if (existing) {
-        existing.value += Number(t.amount)
-      } else {
-        categoryMap.set(categoryId, {
-          name: t.categories?.name || 'Other',
-          value: Number(t.amount),
-          color: t.categories?.color || '#94a3b8',
-        })
-      }
-    })
+  expenseTransactions.forEach((t) => {
+    const categoryId = t.category_id
+    const existing = categoryMap.get(categoryId)
+
+    if (existing) {
+      existing.value += Number(t.amount)
+      existing.count += 1
+    } else {
+      categoryMap.set(categoryId, {
+        name: t.categories?.name || 'Other',
+        value: Number(t.amount),
+        color: t.categories?.color || '#94a3b8',
+        count: 1,
+      })
+    }
+  })
 
   return Array.from(categoryMap.values())
     .sort((a, b) => b.value - a.value)
     .slice(0, limit)
+    .map(item => ({
+      ...item,
+      percent: totalSpent > 0 ? (item.value / totalSpent) * 100 : 0,
+    }))
 }
 
 // Get daily spending over a period

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Check, Sparkles, Lightbulb, PiggyBank, Calendar, Plus, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Sparkles, Lightbulb, PiggyBank, Plus, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { createClient } from '@/lib/supabase/client'
@@ -481,7 +481,6 @@ export function BudgetWizard({
                 next_due: nextDue.toISOString().split('T')[0],
                 category_id: subscriptionCategoryId,
                 is_active: true,
-                bill_type: 'subscription',
               })
             }
           }
@@ -665,7 +664,6 @@ export function BudgetWizard({
 
     // Fixed vs variable analysis
     const fixedPercent = totalIncome > 0 ? (totalFixed / totalIncome) * 100 : 0
-    const variablePercent = totalIncome > 0 ? (totalVariable / totalIncome) * 100 : 0
 
     if (fixedPercent > 50) {
       insights.push(`Your fixed expenses (rent, utilities, transport, subscriptions) take up ${fixedPercent.toFixed(0)}% of your income. This is quite high - ideally fixed costs should be under 50%.`)

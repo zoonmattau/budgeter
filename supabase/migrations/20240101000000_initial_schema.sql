@@ -1,4 +1,4 @@
--- Bloom Budget App - Initial Schema
+-- Seedling Budget App - Initial Schema
 -- ===================================
 
 -- Enable UUID extension

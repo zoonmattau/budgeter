@@ -55,7 +55,7 @@ interface InsightsClientProps {
 export function InsightsClient({
   transactions,
   budgets,
-  totalIncome,
+  totalIncome: _totalIncome,
   totalBudgeted,
   incomeByMonth = [],
   totalLifetimeIncome = 0,
@@ -162,10 +162,14 @@ export function InsightsClient({
           <p className="text-xs text-gray-400">last {days} days</p>
         </div>
         <div className="card">
-          <p className="text-sm text-gray-500">Daily Average</p>
+          <p className="text-sm text-gray-500">Daily Spending Average</p>
           <p className="text-xl font-bold text-bloom-600">{formatCurrency(averageDaily)}</p>
           <p className="text-xs text-gray-400">
-            {averageDaily <= dailyBudget ? 'On track' : 'Over budget'}
+            {averageDaily <= dailyBudget ? (
+              <span className="text-sprout-500">Under your {formatCurrency(dailyBudget)}/day target</span>
+            ) : (
+              <span className="text-coral-500">{formatCurrency(averageDaily - dailyBudget)}/day over target</span>
+            )}
           </p>
         </div>
       </div>
@@ -202,33 +206,54 @@ export function InsightsClient({
         </section>
       )}
 
-      {/* Income breakdown */}
-      {totalIncome > 0 && (
+      {/* Budget Breakdown by Category */}
+      {budgetComparison.length > 0 && (
         <section className="card">
           <h2 className="font-display font-semibold text-gray-900 mb-4">
-            Monthly Overview
+            Budget Breakdown
           </h2>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Monthly Income</span>
-              <span className="font-semibold text-sprout-600">{formatCurrency(totalIncome)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Total Budgeted</span>
-              <span className="font-semibold text-bloom-600">{formatCurrency(totalBudgeted)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Unallocated</span>
-              <span className={`font-semibold ${totalIncome - totalBudgeted >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                {formatCurrency(totalIncome - totalBudgeted)}
-              </span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
-              <div
-                className="h-full bg-bloom-500"
-                style={{ width: `${Math.min((totalBudgeted / totalIncome) * 100, 100)}%` }}
-              />
-            </div>
+          {/* Segmented bar */}
+          <div className="h-8 rounded-lg overflow-hidden flex mb-4">
+            {budgetComparison.map((cat, i) => {
+              const percent = totalBudgeted > 0 ? (cat.budgeted / totalBudgeted) * 100 : 0
+              if (percent < 1) return null
+              return (
+                <div
+                  key={i}
+                  className="h-full relative group cursor-pointer"
+                  style={{ width: `${percent}%`, backgroundColor: cat.color }}
+                  title={`${cat.name}: ${formatCurrency(cat.budgeted)}`}
+                >
+                  <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-10 transition-opacity" />
+                </div>
+              )
+            })}
+          </div>
+          {/* Category breakdown list */}
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {budgetComparison
+              .sort((a, b) => b.budgeted - a.budgeted)
+              .map((cat, i) => {
+                const budgetPercent = totalBudgeted > 0 ? (cat.budgeted / totalBudgeted) * 100 : 0
+                const spentPercent = cat.budgeted > 0 ? (cat.spent / cat.budgeted) * 100 : 0
+                return (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-900 truncate">{cat.name}</span>
+                        <span className="text-gray-500 ml-2">{budgetPercent.toFixed(0)}%</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>{formatCurrency(cat.spent)} / {formatCurrency(cat.budgeted)}</span>
+                        <span className={spentPercent > 100 ? 'text-red-500' : spentPercent > 80 ? 'text-amber-500' : 'text-sprout-500'}>
+                          {spentPercent.toFixed(0)}% used
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
           </div>
         </section>
       )}

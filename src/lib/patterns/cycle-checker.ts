@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/database.types'
-import { normalizeDescription, calculateSimilarity } from './matcher'
+import { calculateSimilarity } from './matcher'
 
 type PaymentPattern = Database['public']['Tables']['payment_patterns']['Row']
 

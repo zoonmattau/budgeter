@@ -8,7 +8,6 @@ import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { DatePicker } from '@/components/ui/date-picker'
-import { TogglePills } from '@/components/ui/toggle-pills'
 import type { Tables } from '@/lib/database.types'
 
 interface QuickAddButtonProps {
@@ -164,20 +163,20 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
       return
     }
 
-    // Create the transaction (investments are recorded as transfers to investment accounts)
+    // Create the transaction (investments and subscriptions are recorded as expenses)
     const { error } = await supabase.from('transactions').insert({
       user_id: user.id,
       category_id: categoryId || expenseCategories[0]?.id,
       amount: parseFloat(amount),
-      type: isInvestment ? 'expense' : transactionType, // Investments are outflows
+      type: (isInvestment || isSubscription) ? 'expense' : transactionType,
       description: description || selectedCategory?.name || incomePreset || 'Income',
       date: date,
-      account_id: isExpense && selectedCardId ? selectedCardId : (isInvestment ? selectedInvestmentId : null),
+      account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : (isInvestment ? selectedInvestmentId : null),
       is_recurring: isRecurring,
     })
 
-    // If expense was added to a credit card, update the card balance
-    if (!error && isExpense && selectedCardId) {
+    // If expense or subscription was added to a credit card, update the card balance
+    if (!error && (isExpense || isSubscription) && selectedCardId) {
       const card = creditCards.find(c => c.id === selectedCardId)
       if (card) {
         await supabase
@@ -222,7 +221,6 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
         due_day: dueDay,
         next_due: nextDue.toISOString().split('T')[0],
         is_active: true,
-        bill_type: isSubscription ? 'subscription' : 'bill',
       })
 
       if (!billError) {
@@ -485,8 +483,8 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             </div>
           )}
 
-          {/* Income Source - for income */}
-          {!isExpense && (
+          {/* Income Source - for income only */}
+          {transactionType === 'income' && (
             <div>
               <label className="label">Source</label>
 
@@ -612,8 +610,8 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             </div>
           )}
 
-          {/* Credit Card Selection - for expenses only */}
-          {isExpense && creditCards.length > 0 && (
+          {/* Credit Card Selection - for expenses and subscriptions */}
+          {(isExpense || isSubscription) && creditCards.length > 0 && (
             <div>
               <label className="label">Pay With (optional)</label>
               <div className="flex flex-wrap gap-2">

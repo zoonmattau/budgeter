@@ -51,9 +51,11 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
 
   const minValue = Math.min(...chartData.map((d) => d.netWorth))
   const maxValue = Math.max(...chartData.map((d) => d.netWorth))
-  const hasNegative = minValue < 0
   const currentNetWorth = chartData[chartData.length - 1]?.netWorth ?? 0
   const isCurrentlyNegative = currentNetWorth < 0
+
+  // Calculate nice round numbers for Y-axis
+  const { domainMin, domainMax, ticks } = calculateNiceScale(minValue, maxValue)
 
   return (
     <div className="space-y-4">
@@ -84,11 +86,9 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
             tickLine={false}
             tick={{ fontSize: 11, fill: '#9ca3af' }}
             tickFormatter={(value) => formatCompactCurrency(value)}
-            domain={[
-              hasNegative ? minValue * 1.1 : 0,
-              maxValue * 1.1
-            ]}
-            width={55}
+            domain={[domainMin, domainMax]}
+            ticks={ticks}
+            width={65}
           />
 
           <Tooltip
@@ -102,14 +102,13 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
             labelStyle={{ fontWeight: 600 }}
           />
 
-          {hasNegative && (
-            <ReferenceLine
-              y={0}
-              stroke="#9ca3af"
-              strokeDasharray="3 3"
-              strokeWidth={1}
-            />
-          )}
+          {/* Always show zero line to visualize distance from $0 */}
+          <ReferenceLine
+            y={0}
+            stroke="#9ca3af"
+            strokeDasharray="3 3"
+            strokeWidth={1}
+          />
 
           <Area
             type="monotone"
@@ -184,4 +183,54 @@ function filterDataByRange(
 function formatDateLabel(dateStr: string) {
   const date = new Date(dateStr)
   return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+}
+
+/**
+ * Calculate nice round numbers for Y-axis that always include 0
+ */
+function calculateNiceScale(min: number, max: number): { domainMin: number; domainMax: number; ticks: number[] } {
+  // Always include 0 to show distance from zero
+  const actualMin = Math.min(min, 0)
+  const actualMax = Math.max(max, 0)
+
+  // Find the magnitude of the range
+  const range = actualMax - actualMin
+  if (range === 0) {
+    // If all values are the same, create a range around that value
+    const padding = Math.abs(actualMax) * 0.2 || 1000
+    return {
+      domainMin: actualMin - padding,
+      domainMax: actualMax + padding,
+      ticks: [actualMin - padding, 0, actualMax + padding].filter((v, i, a) => a.indexOf(v) === i),
+    }
+  }
+
+  // Calculate a nice step size (1, 2, 5, 10, 20, 50, 100, etc.)
+  const roughStep = range / 4 // Aim for ~4-5 ticks
+  const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)))
+  const residual = roughStep / magnitude
+
+  let niceStep: number
+  if (residual <= 1.5) niceStep = magnitude
+  else if (residual <= 3) niceStep = 2 * magnitude
+  else if (residual <= 7) niceStep = 5 * magnitude
+  else niceStep = 10 * magnitude
+
+  // Round min down and max up to nice step boundaries
+  const domainMin = Math.floor(actualMin / niceStep) * niceStep
+  const domainMax = Math.ceil(actualMax / niceStep) * niceStep
+
+  // Generate tick values
+  const ticks: number[] = []
+  for (let tick = domainMin; tick <= domainMax; tick += niceStep) {
+    ticks.push(Math.round(tick * 100) / 100) // Avoid floating point issues
+  }
+
+  // Ensure 0 is included if it's in the range
+  if (domainMin < 0 && domainMax > 0 && !ticks.includes(0)) {
+    ticks.push(0)
+    ticks.sort((a, b) => a - b)
+  }
+
+  return { domainMin, domainMax, ticks }
 }

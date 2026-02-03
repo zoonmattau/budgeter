@@ -126,6 +126,8 @@ export interface Database {
           original_amount: number | null
           payoff_date: string | null
           payment_frequency: 'weekly' | 'fortnightly' | 'monthly' | null
+          credit_limit: number | null
+          interest_last_applied: string | null
           basiq_account_id: string | null
           created_at: string
           updated_at: string
@@ -146,6 +148,8 @@ export interface Database {
           original_amount?: number | null
           payoff_date?: string | null
           payment_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          credit_limit?: number | null
+          interest_last_applied?: string | null
           basiq_account_id?: string | null
           created_at?: string
           updated_at?: string
@@ -166,6 +170,8 @@ export interface Database {
           original_amount?: number | null
           payoff_date?: string | null
           payment_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          credit_limit?: number | null
+          interest_last_applied?: string | null
           basiq_account_id?: string | null
           created_at?: string
           updated_at?: string
@@ -253,6 +259,9 @@ export interface Database {
           source: string
           amount: number
           is_recurring: boolean
+          pay_frequency: 'weekly' | 'fortnightly' | 'monthly' | null
+          pay_day: number | null
+          next_pay_date: string | null
           created_at: string
         }
         Insert: {
@@ -263,6 +272,9 @@ export interface Database {
           source: string
           amount: number
           is_recurring?: boolean
+          pay_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          pay_day?: number | null
+          next_pay_date?: string | null
           created_at?: string
         }
         Update: {
@@ -273,6 +285,9 @@ export interface Database {
           source?: string
           amount?: number
           is_recurring?: boolean
+          pay_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          pay_day?: number | null
+          next_pay_date?: string | null
           created_at?: string
         }
         Relationships: []
@@ -337,6 +352,8 @@ export interface Database {
           due_day: number
           next_due: string
           is_active: boolean
+          is_one_off: boolean
+          saved_amount: number
           created_at: string
         }
         Insert: {
@@ -350,6 +367,8 @@ export interface Database {
           due_day: number
           next_due: string
           is_active?: boolean
+          is_one_off?: boolean
+          saved_amount?: number
           created_at?: string
         }
         Update: {
@@ -363,6 +382,8 @@ export interface Database {
           due_day?: number
           next_due?: string
           is_active?: boolean
+          is_one_off?: boolean
+          saved_amount?: number
           created_at?: string
         }
         Relationships: []

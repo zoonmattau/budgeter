@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { format, differenceInDays, isToday, isTomorrow, isPast } from 'date-fns'
-import { Calendar, RotateCcw, ChevronRight, CalendarCheck, Tv } from 'lucide-react'
+import { Calendar, RotateCcw, ChevronRight, CalendarCheck } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
 import type { Tables } from '@/lib/database.types'
@@ -10,7 +10,6 @@ import type { Tables } from '@/lib/database.types'
 type BillWithCategory = Tables<'bills'> & {
   categories: Tables<'categories'> | null
   is_one_off?: boolean
-  bill_type?: 'bill' | 'subscription'
 }
 
 interface BillsListProps {
@@ -67,16 +66,11 @@ export function BillsList({ bills }: BillsListProps) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="font-medium text-gray-900 truncate">{bill.name}</h3>
-                  <span className={`flex items-center gap-1 text-xs ${bill.bill_type === 'subscription' ? 'text-purple-500' : 'text-gray-400'}`}>
+                  <span className="flex items-center gap-1 text-xs text-gray-400">
                     {bill.is_one_off ? (
                       <>
                         <CalendarCheck className="w-3 h-3" />
                         One-off
-                      </>
-                    ) : bill.bill_type === 'subscription' ? (
-                      <>
-                        <Tv className="w-3 h-3" />
-                        Subscription
                       </>
                     ) : (
                       <>

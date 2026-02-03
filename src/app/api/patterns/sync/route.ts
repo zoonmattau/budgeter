@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { calculateNextExpected } from '@/lib/patterns/matcher'
 import { autoMatchPredictions } from '@/lib/patterns/cycle-checker'
 
 export async function POST() {

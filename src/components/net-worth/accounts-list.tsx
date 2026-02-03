@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { ChevronRight, Percent } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronRight, Percent, AlertTriangle, Settings } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { format } from 'date-fns'
 import { AccountLogo } from '@/components/ui/account-logo'
@@ -23,15 +24,22 @@ const typeLabels: Record<string, string> = {
 }
 
 export function AccountsList({ accounts, showInterestInfo = false }: AccountsListProps) {
+  const router = useRouter()
+
   return (
     <div className="card divide-y divide-gray-50">
       {accounts.map((account) => {
         const typeLabel = typeLabels[account.type] || typeLabels.bank
+        const isCreditCard = account.type === 'credit' || account.type === 'credit_card'
+        const creditLimit = account.credit_limit || 0
+        const utilization = creditLimit > 0 ? (account.balance / creditLimit) * 100 : 0
+        const isNearLimit = utilization >= 75
+        const isOverLimit = utilization >= 100
 
         return (
           <Link
             key={account.id}
-            href={`/net-worth/${account.id}/edit`}
+            href={`/transactions?account=${account.id}`}
             className="block py-3 first:pt-0 last:pb-0 group"
           >
             <div className="flex items-center justify-between">
@@ -51,12 +59,47 @@ export function AccountsList({ accounts, showInterestInfo = false }: AccountsLis
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {isCreditCard && isNearLimit && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
+                    isOverLimit ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    <AlertTriangle className="w-3 h-3" />
+                    {isOverLimit ? 'Over limit' : `${Math.round(utilization)}% used`}
+                  </span>
+                )}
                 <p className={`font-semibold ${account.is_asset ? 'text-gray-900' : 'text-red-600'}`}>
                   {account.is_asset ? '' : '-'}{formatCurrency(account.balance)}
                 </p>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    router.push(`/net-worth/${account.id}/edit`)
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Edit account"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
                 <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-bloom-500 transition-colors" />
               </div>
             </div>
+
+            {/* Credit limit progress bar */}
+            {isCreditCard && creditLimit > 0 && (
+              <div className="mt-2 ml-13">
+                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                  <span>{formatCurrency(account.balance)} of {formatCurrency(creditLimit)}</span>
+                  <span>{formatCurrency(Math.max(0, creditLimit - account.balance))} available</span>
+                </div>
+                <div className="h-1.5 bg-red-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all bg-red-500"
+                    style={{ width: `${Math.min(utilization, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Interest & payment info for loans/credit cards */}
             {showInterestInfo && (account.interest_rate || account.due_date || account.payoff_date) && (

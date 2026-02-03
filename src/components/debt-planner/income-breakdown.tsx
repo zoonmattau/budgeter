@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Wallet, CreditCard, Sparkles, PiggyBank, ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface BudgetItem {

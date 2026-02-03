@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
-import { BillsList } from '@/components/bills/bills-list'
+import { BillsTimeline } from '@/components/bills/bills-timeline'
+import { BillsStats } from '@/components/bills/bills-stats'
 import { formatCurrency } from '@/lib/utils'
+import { endOfWeek, addWeeks, endOfMonth, differenceInDays } from 'date-fns'
 
 export default async function BillsPage() {
   const supabase = await createClient()
@@ -17,8 +19,39 @@ export default async function BillsPage() {
     .eq('is_active', true)
     .order('next_due', { ascending: true })
 
+  const today = new Date()
+  const thisWeekEnd = endOfWeek(today, { weekStartsOn: 1 })
+  const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 })
+  const thisMonthEnd = endOfMonth(today)
+
+  // Group bills by time period
+  const overdueBills = bills?.filter(b => {
+    const due = new Date(b.next_due)
+    return differenceInDays(due, today) < 0
+  }) || []
+
+  const thisWeekBills = bills?.filter(b => {
+    const due = new Date(b.next_due)
+    const days = differenceInDays(due, today)
+    return days >= 0 && due <= thisWeekEnd
+  }) || []
+
+  const nextWeekBills = bills?.filter(b => {
+    const due = new Date(b.next_due)
+    return due > thisWeekEnd && due <= nextWeekEnd
+  }) || []
+
+  const thisMonthBills = bills?.filter(b => {
+    const due = new Date(b.next_due)
+    return due > nextWeekEnd && due <= thisMonthEnd
+  }) || []
+
+  const laterBills = bills?.filter(b => {
+    const due = new Date(b.next_due)
+    return due > thisMonthEnd
+  }) || []
+
   const totalMonthly = bills?.reduce((sum, bill) => {
-    // Exclude one-off bills from monthly estimate
     if (bill.is_one_off) return sum
     const amount = Number(bill.amount)
     switch (bill.frequency) {
@@ -31,13 +64,19 @@ export default async function BillsPage() {
     }
   }, 0) || 0
 
+  // Calculate totals by period
+  const overdueTotal = overdueBills.reduce((sum, b) => sum + Number(b.amount), 0)
+  const thisWeekTotal = thisWeekBills.reduce((sum, b) => sum + Number(b.amount), 0)
+  const nextWeekTotal = nextWeekBills.reduce((sum, b) => sum + Number(b.amount), 0)
+  const thisMonthTotal = thisMonthBills.reduce((sum, b) => sum + Number(b.amount), 0)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-gray-900">Bills</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {bills?.length || 0} upcoming bill{bills?.length !== 1 ? 's' : ''}
+            {bills?.length || 0} active bill{bills?.length !== 1 ? 's' : ''}
           </p>
         </div>
         <Link href="/bills/new" className="btn-primary">
@@ -46,13 +85,35 @@ export default async function BillsPage() {
         </Link>
       </div>
 
-      {/* Monthly Total */}
-      <div className="card bg-gradient-to-br from-amber-50 to-coral-50">
-        <p className="text-sm text-gray-600">Estimated Monthly Bills</p>
-        <p className="text-3xl font-bold text-gray-900 mt-1">{formatCurrency(totalMonthly)}</p>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card bg-gradient-to-br from-amber-50 to-coral-50">
+          <p className="text-xs text-gray-600">Monthly Average</p>
+          <p className="text-xl font-bold text-gray-900">{formatCurrency(totalMonthly)}</p>
+        </div>
+        <div className={`card ${overdueTotal > 0 ? 'bg-gradient-to-br from-red-50 to-red-100' : 'bg-gradient-to-br from-sprout-50 to-bloom-50'}`}>
+          <p className="text-xs text-gray-600">{overdueTotal > 0 ? 'Overdue' : 'Due This Week'}</p>
+          <p className={`text-xl font-bold ${overdueTotal > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+            {formatCurrency(overdueTotal > 0 ? overdueTotal : thisWeekTotal)}
+          </p>
+        </div>
       </div>
 
-      <BillsList bills={bills || []} />
+      {/* Bill Insights */}
+      <BillsStats bills={bills || []} totalMonthly={totalMonthly} />
+
+      {/* Upcoming Timeline */}
+      <BillsTimeline
+        overdue={overdueBills}
+        thisWeek={thisWeekBills}
+        nextWeek={nextWeekBills}
+        thisMonth={thisMonthBills}
+        later={laterBills}
+        overdueTotal={overdueTotal}
+        thisWeekTotal={thisWeekTotal}
+        nextWeekTotal={nextWeekTotal}
+        thisMonthTotal={thisMonthTotal}
+      />
     </div>
   )
 }

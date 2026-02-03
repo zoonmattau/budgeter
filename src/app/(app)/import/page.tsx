@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -59,7 +58,6 @@ interface Analysis {
 }
 
 export default function ImportPage() {
-  const router = useRouter()
   const [mode, setMode] = useState<'upload' | 'paste' | 'scan'>('upload')
   const [file, setFile] = useState<File | null>(null)
   const [pastedText, setPastedText] = useState('')
@@ -151,7 +149,7 @@ export default function ImportPage() {
       } else {
         setScanResults(data)
       }
-    } catch (err) {
+    } catch {
       setError('Failed to scan for patterns. Please try again.')
     } finally {
       setScanning(false)

@@ -84,6 +84,10 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
     { data: budgets },
     { data: incomeEntries },
     { data: transactions },
+    { data: bills },
+    { data: debtAccounts },
+    { data: savingsGoals },
+    { data: bankAccounts },
   ] = await Promise.all([
     supabase
       .from('categories')
@@ -120,19 +124,75 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .eq('household_id', householdId)
           .eq('type', 'expense')
           .gte('date', currentMonth)
+          .lte('date', format(new Date(), 'yyyy-MM-dd'))
       : supabase
           .from('transactions')
           .select('*')
           .eq('user_id', user.id)
           .eq('type', 'expense')
-          .gte('date', currentMonth),
+          .gte('date', currentMonth)
+          .lte('date', format(new Date(), 'yyyy-MM-dd')),
+    supabase
+      .from('bills')
+      .select('id, name, amount, frequency, next_due, category_id, is_active, is_one_off, saved_amount')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .order('next_due'),
+    supabase
+      .from('accounts')
+      .select('id, name, type, balance, minimum_payment, payment_frequency')
+      .eq('user_id', user.id)
+      .in('type', ['credit', 'credit_card', 'debt', 'loan'])
+      .gt('balance', 0),
+    // Savings goals (non-debt payoff goals)
+    supabase
+      .from('goals')
+      .select('id, name, target_amount, current_amount, target_date, icon, color, goal_type')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .neq('goal_type', 'debt_payoff')
+      .order('created_at'),
+    // Bank accounts for sinking fund contributions
+    supabase
+      .from('accounts')
+      .select('id, name, type, balance')
+      .eq('user_id', user.id)
+      .in('type', ['bank', 'cash']),
   ])
+
+  // Filter out Interest and Other categories, then sort with rent/mortgage at the top
+  const sortedCategories = [...(categories || [])]
+    .filter(c => {
+      const name = c.name.toLowerCase()
+      return name !== 'interest' && name !== 'other' && name !== 'interest & other'
+    })
+    .sort((a, b) => {
+      const aName = a.name.toLowerCase()
+      const bName = b.name.toLowerCase()
+      const aIsHousing = aName.includes('rent') || aName.includes('mortgage') || aName.includes('housing')
+      const bIsHousing = bName.includes('rent') || bName.includes('mortgage') || bName.includes('housing')
+
+      if (aIsHousing && !bIsHousing) return -1
+      if (!aIsHousing && bIsHousing) return 1
+      return (a.sort_order || 0) - (b.sort_order || 0)
+    })
 
   // Calculate spent per category
   const spentByCategory = (transactions || []).reduce((acc, t) => {
     acc[t.category_id] = (acc[t.category_id] || 0) + Number(t.amount)
     return acc
   }, {} as Record<string, number>)
+
+  // Group transactions by category (most recent first, limit 5 per category)
+  const transactionsByCategory = (transactions || [])
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .reduce((acc, t) => {
+      if (!acc[t.category_id]) acc[t.category_id] = []
+      if (acc[t.category_id].length < 5) {
+        acc[t.category_id].push(t)
+      }
+      return acc
+    }, {} as Record<string, typeof transactions>)
 
   // Calculate spending by member per category for household view
   const spentByMemberByCategory: Record<string, Record<string, number>> = {}
@@ -174,7 +234,8 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       </div>
 
       <BudgetBuilder
-        categories={categories || []}
+        key={scope} // Force remount when scope changes to reset allocations state
+        categories={sortedCategories}
         budgets={budgets || []}
         incomeEntries={incomeEntries || []}
         spentByCategory={spentByCategory}
@@ -187,6 +248,13 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
         householdContributions={totalHouseholdContributions}
         memberContributions={memberContributions}
         userMonthlyContribution={userMonthlyContribution}
+        bills={bills || []}
+        transactionsByCategory={transactionsByCategory}
+        debtAccounts={debtAccounts || []}
+        userContribution={userContribution}
+        userContributionFrequency={userContributionFrequency}
+        savingsGoals={savingsGoals || []}
+        bankAccounts={bankAccounts || []}
       />
     </div>
   )

@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add creator as owner (ignore if trigger already added them)
-    const { error: memberError } = await adminClient
+    await adminClient
       .from('household_members')
       .upsert({
         household_id: household.id,

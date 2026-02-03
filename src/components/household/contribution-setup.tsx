@@ -65,7 +65,7 @@ export function ContributionSetup({ householdId, householdName, onComplete }: Co
       }
 
       onComplete()
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
       setLoading(false)
     }

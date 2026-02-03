@@ -3,13 +3,15 @@ import { Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { TransactionsList } from '@/components/transactions/transactions-list'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
+import { AccountFilter } from '@/components/transactions/account-filter'
+import { BackButton } from '@/components/ui/back-button'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
-import { format, startOfMonth, endOfMonth } from 'date-fns'
+import { format, startOfMonth } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
 
 interface TransactionsPageProps {
-  searchParams: Promise<{ scope?: string }>
+  searchParams: Promise<{ scope?: string; account?: string; category?: string }>
 }
 
 export default async function TransactionsPage({ searchParams }: TransactionsPageProps) {
@@ -20,7 +22,6 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
   const params = await searchParams
   const currentMonth = startOfMonth(new Date())
-  const monthEnd = endOfMonth(new Date())
 
   // Fetch household membership
   const { data: membership } = await supabase
@@ -64,23 +65,45 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
     })
   }
 
-  // Fetch transactions - scope-aware
-  const [{ data: transactions }, { data: expenseCategories }, { data: incomeCategories }, { data: accounts }] = await Promise.all([
-    scope === 'household' && householdId
+  const accountFilter = params.account || null
+  const categoryFilter = params.category || null
+
+  // Build transaction query with optional filters
+  const buildTransactionQuery = () => {
+    let query = scope === 'household' && householdId
       ? supabase
           .from('transactions')
           .select('*, categories(*), profiles:user_id(display_name)')
           .eq('household_id', householdId)
-          .gte('date', format(currentMonth, 'yyyy-MM-dd'))
-          .lte('date', format(monthEnd, 'yyyy-MM-dd'))
-          .order('date', { ascending: false })
       : supabase
           .from('transactions')
           .select('*, categories(*)')
           .eq('user_id', user.id)
-          .gte('date', format(currentMonth, 'yyyy-MM-dd'))
-          .lte('date', format(monthEnd, 'yyyy-MM-dd'))
-          .order('date', { ascending: false }),
+
+    // Apply date filters
+    if (accountFilter) {
+      // For account view, show all past transactions up to today (exclude future)
+      query = query
+        .eq('account_id', accountFilter)
+        .lte('date', format(new Date(), 'yyyy-MM-dd'))
+    } else {
+      // For general view, show current month only (exclude future)
+      query = query
+        .gte('date', format(currentMonth, 'yyyy-MM-dd'))
+        .lte('date', format(new Date(), 'yyyy-MM-dd'))
+    }
+
+    // Apply category filter
+    if (categoryFilter) {
+      query = query.eq('category_id', categoryFilter)
+    }
+
+    return query.order('date', { ascending: false }).limit(accountFilter ? 100 : 500)
+  }
+
+  // Fetch transactions - scope-aware
+  const [{ data: transactions }, { data: expenseCategories }, { data: incomeCategories }, { data: accounts }, { data: allAccounts }, { data: selectedAccount }] = await Promise.all([
+    buildTransactionQuery(),
     supabase
       .from('categories')
       .select('*')
@@ -96,6 +119,18 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
       .select('*')
       .eq('user_id', user.id)
       .in('type', ['credit', 'credit_card']),
+    supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('name'),
+    accountFilter
+      ? supabase
+          .from('accounts')
+          .select('*')
+          .eq('id', accountFilter)
+          .single()
+      : Promise.resolve({ data: null }),
   ])
 
   const totalExpenses = transactions
@@ -127,15 +162,32 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
   // Cast transactions for component
   const typedTransactions = (transactions || []) as (typeof transactions extends (infer T)[] | null ? T & { profiles?: { display_name: string | null } | null } : never)[]
 
+  // Build page title based on filters
+  const getPageTitle = () => {
+    if (selectedAccount) return selectedAccount.name
+    if (scope === 'household') return 'Household Transactions'
+    return 'Transactions'
+  }
+
+  const getSubtitle = () => {
+    if (selectedAccount) return 'All transactions'
+    return format(new Date(), 'MMMM yyyy')
+  }
+
   return (
     <div className="space-y-6">
       <div className="space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
+            {selectedAccount && (
+              <BackButton className="text-sm text-bloom-600 hover:text-bloom-700 mb-1 inline-block">
+                ← Back
+              </BackButton>
+            )}
             <h1 className="font-display text-2xl font-bold text-gray-900">
-              {scope === 'household' ? 'Household Transactions' : 'Transactions'}
+              {getPageTitle()}
             </h1>
-            <p className="text-gray-500 text-sm mt-1">{format(new Date(), 'MMMM yyyy')}</p>
+            <p className="text-gray-500 text-sm mt-1">{getSubtitle()}</p>
           </div>
           <Link
             href="/import"
@@ -146,7 +198,10 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
             <span className="sm:hidden">Import</span>
           </Link>
         </div>
-        {isInHousehold && <ScopeToggle />}
+        <div className="flex items-center gap-2 flex-wrap">
+          {isInHousehold && <ScopeToggle />}
+          <AccountFilter accounts={allAccounts || []} selectedAccountId={accountFilter} />
+        </div>
       </div>
 
       {/* Summary */}
@@ -173,6 +228,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
       <TransactionsList
         transactions={typedTransactions}
         categories={[...(expenseCategories || []), ...(incomeCategories || [])]}
+        creditCards={accounts || []}
         showMemberBadge={scope === 'household'}
         members={members}
         currentUserId={user.id}

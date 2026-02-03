@@ -19,9 +19,10 @@ interface BillEditFormProps {
   bill: BillWithCategory
 }
 
-type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+type Frequency = 'once' | 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
 
 const frequencies: { value: Frequency; label: string }[] = [
+  { value: 'once', label: 'One-off' },
   { value: 'weekly', label: 'Weekly' },
   { value: 'fortnightly', label: 'Fortnightly' },
   { value: 'monthly', label: 'Monthly' },
@@ -34,8 +35,13 @@ export function BillEditForm({ bill }: BillEditFormProps) {
   const [categories, setCategories] = useState<Tables<'categories'>[]>([])
   const [name, setName] = useState(bill.name)
   const [amount, setAmount] = useState(String(bill.amount))
-  const [frequency, setFrequency] = useState(bill.frequency)
+  const [frequency, setFrequency] = useState<Frequency>(bill.is_one_off ? 'once' : bill.frequency as Frequency)
   const [dueDay, setDueDay] = useState(String(bill.due_day))
+  const [dueDate, setDueDate] = useState(bill.next_due)
+  const isOneOff = frequency === 'once'
+  const isWeeklyOrFortnightly = frequency === 'weekly' || frequency === 'fortnightly'
+  const isQuarterlyOrYearly = frequency === 'quarterly' || frequency === 'yearly'
+  const isMonthly = frequency === 'monthly'
   const [categoryId, setCategoryId] = useState(bill.category_id)
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -64,30 +70,19 @@ export function BillEditForm({ bill }: BillEditFormProps) {
   }, [supabase])
 
   function calculateNextDue(): string {
+    // For one-off, quarterly, yearly, or weekly/fortnightly - use the date picker
+    if (isOneOff || isQuarterlyOrYearly || isWeeklyOrFortnightly) {
+      return dueDate
+    }
+
+    // Monthly - use day of month
     const today = new Date()
     const parsedDay = parseInt(dueDay, 10)
     const day = isNaN(parsedDay) ? 1 : Math.max(1, Math.min(31, parsedDay))
-
     let nextDue = new Date(today.getFullYear(), today.getMonth(), day)
 
     if (nextDue <= today) {
-      switch (frequency) {
-        case 'weekly':
-          nextDue = addWeeks(nextDue, 1)
-          break
-        case 'fortnightly':
-          nextDue = addWeeks(nextDue, 2)
-          break
-        case 'monthly':
-          nextDue = addMonths(nextDue, 1)
-          break
-        case 'quarterly':
-          nextDue = addMonths(nextDue, 3)
-          break
-        case 'yearly':
-          nextDue = addMonths(nextDue, 12)
-          break
-      }
+      nextDue = addMonths(nextDue, 1)
     }
 
     return format(nextDue, 'yyyy-MM-dd')
@@ -99,10 +94,21 @@ export function BillEditForm({ bill }: BillEditFormProps) {
 
     if (!name || !amount || !categoryId) return
 
-    const parsedDueDay = parseInt(dueDay, 10)
-    if (isNaN(parsedDueDay) || parsedDueDay < 1 || parsedDueDay > 31) {
-      setError('Please enter a valid due day (1-31)')
-      return
+    // Validate based on frequency
+    let parsedDueDay = 1
+
+    if (isMonthly) {
+      parsedDueDay = parseInt(dueDay, 10)
+      if (isNaN(parsedDueDay) || parsedDueDay < 1 || parsedDueDay > 31) {
+        setError('Please enter a valid due day (1-31)')
+        return
+      }
+    } else if (isWeeklyOrFortnightly) {
+      // Store day of week (0-6) from the selected date
+      parsedDueDay = new Date(dueDate).getDay()
+    } else if (isQuarterlyOrYearly || isOneOff) {
+      // Store day of month from the selected date
+      parsedDueDay = new Date(dueDate).getDate()
     }
 
     const parsedAmount = parseFloat(amount)
@@ -113,22 +119,24 @@ export function BillEditForm({ bill }: BillEditFormProps) {
 
     setLoading(true)
 
+    const updateData = {
+      name,
+      amount: parsedAmount,
+      frequency: isOneOff ? 'monthly' : frequency as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly',
+      due_day: parsedDueDay,
+      next_due: calculateNextDue(),
+      category_id: categoryId,
+      is_one_off: isOneOff,
+    }
+
     const { error: updateError } = await supabase
       .from('bills')
-      .update({
-        name,
-        amount: parsedAmount,
-        frequency: frequency as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly',
-        due_day: parsedDueDay,
-        next_due: calculateNextDue(),
-        category_id: categoryId,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', bill.id)
 
     if (updateError) {
-      setError('Failed to update bill. Please try again.')
-      console.error('Error updating bill:', updateError)
+      setError(`Failed to update bill: ${updateError.message || updateError.code || JSON.stringify(updateError)}`)
+      console.error('Error updating bill:', JSON.stringify(updateError, null, 2))
       setLoading(false)
       return
     }
@@ -172,7 +180,7 @@ export function BillEditForm({ bill }: BillEditFormProps) {
       .from('bills')
       .update({
         next_due: format(nextDue, 'yyyy-MM-dd'),
-        updated_at: new Date().toISOString(),
+        saved_amount: 0,
       })
       .eq('id', bill.id)
 
@@ -230,8 +238,8 @@ export function BillEditForm({ bill }: BillEditFormProps) {
     setDeleting(false)
   }
 
-  const dueDate = new Date(bill.next_due)
-  const isOverdue = dueDate < new Date() && dueDate.toDateString() !== new Date().toDateString()
+  const displayDueDate = new Date(bill.next_due)
+  const isOverdue = displayDueDate < new Date() && displayDueDate.toDateString() !== new Date().toDateString()
 
   return (
     <>
@@ -265,7 +273,7 @@ export function BillEditForm({ bill }: BillEditFormProps) {
             <p className={`text-sm mt-1 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
               <Calendar className="w-3 h-3 inline mr-1" />
               {isOverdue ? 'Overdue - ' : 'Next due: '}
-              {format(dueDate, 'MMMM d, yyyy')}
+              {format(displayDueDate, 'MMMM d, yyyy')}
             </p>
           </div>
         </div>
@@ -332,22 +340,83 @@ export function BillEditForm({ bill }: BillEditFormProps) {
           </div>
         </div>
 
-        <div>
-          <label htmlFor="due-day" className="label">Due Day</label>
-          <input
-            id="due-day"
-            type="number"
-            min="1"
-            max="31"
-            value={dueDay}
-            onChange={(e) => setDueDay(e.target.value)}
-            className="input"
-            required
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            Day of the month the bill is due
-          </p>
-        </div>
+        {/* One-off: Calendar picker */}
+        {isOneOff && (
+          <div>
+            <label htmlFor="due-date" className="label">Due Date</label>
+            <input
+              id="due-date"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="input"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              When is this one-off payment due?
+            </p>
+          </div>
+        )}
+
+        {/* Weekly/Fortnightly: Date picker for next due date */}
+        {isWeeklyOrFortnightly && (
+          <div>
+            <label htmlFor="due-date-weekly" className="label">Next Due Date</label>
+            <input
+              id="due-date-weekly"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="input"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              {frequency === 'weekly'
+                ? 'Select the next due date - we\'ll repeat every week'
+                : 'Select the next due date - we\'ll repeat every 2 weeks'}
+            </p>
+          </div>
+        )}
+
+        {/* Monthly: Day of month */}
+        {isMonthly && (
+          <div>
+            <label htmlFor="due-day" className="label">Due Day of Month</label>
+            <input
+              id="due-day"
+              type="number"
+              min="1"
+              max="31"
+              value={dueDay}
+              onChange={(e) => setDueDay(e.target.value)}
+              className="input"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Day of the month the bill is due (1-31)
+            </p>
+          </div>
+        )}
+
+        {/* Quarterly/Yearly: Calendar picker for next occurrence */}
+        {isQuarterlyOrYearly && (
+          <div>
+            <label htmlFor="due-date" className="label">Next Due Date</label>
+            <input
+              id="due-date"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="input"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              {frequency === 'quarterly'
+                ? 'Select the next due date - we\'ll repeat every 3 months'
+                : 'Select the next due date - we\'ll repeat every year'}
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="label">Category</label>

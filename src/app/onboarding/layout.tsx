@@ -44,7 +44,7 @@ export default async function OnboardingLayout({
               />
             </svg>
           </div>
-          <span className="font-display font-semibold text-gray-900">Bloom</span>
+          <span className="font-display font-semibold text-gray-900">Seedling</span>
         </div>
       </header>
 

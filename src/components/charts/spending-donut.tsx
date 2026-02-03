@@ -5,9 +5,34 @@ import { ChartWrapper } from './chart-wrapper'
 import { formatCurrency } from '@/lib/utils'
 
 interface SpendingDonutProps {
-  data: { name: string; value: number; color: string }[]
+  data: { name: string; value: number; color: string; count?: number; percent?: number }[]
   height?: number
   showLegend?: boolean
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: { payload: { name: string; value: number; count?: number; percent?: number } }[]
+}
+
+function CustomTooltip({ active, payload }: CustomTooltipProps) {
+  if (!active || !payload || !payload[0]) return null
+
+  const data = payload[0].payload
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-3 border border-gray-100">
+      <p className="font-medium text-gray-900">{data.name}</p>
+      <p className="text-lg font-bold text-gray-900">{formatCurrency(data.value)}</p>
+      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+        {data.percent !== undefined && (
+          <span>{data.percent.toFixed(1)}% of total</span>
+        )}
+        {data.count !== undefined && (
+          <span>{data.count} transaction{data.count !== 1 ? 's' : ''}</span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function SpendingDonut({ data, height = 200, showLegend = true }: SpendingDonutProps) {
@@ -41,15 +66,7 @@ export function SpendingDonut({ data, height = 200, showLegend = true }: Spendin
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>
-          <Tooltip
-            formatter={(value) => formatCurrency(Number(value))}
-            contentStyle={{
-              borderRadius: '12px',
-              border: 'none',
-              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-              padding: '8px 12px',
-            }}
-          />
+          <Tooltip content={<CustomTooltip />} />
         </PieChart>
       </ChartWrapper>
 
@@ -61,7 +78,10 @@ export function SpendingDonut({ data, height = 200, showLegend = true }: Spendin
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: item.color }}
               />
-              <span className="text-xs text-gray-600">{item.name}</span>
+              <span className="text-xs text-gray-600">
+                {item.name}
+                {item.percent !== undefined && ` (${item.percent.toFixed(0)}%)`}
+              </span>
             </div>
           ))}
         </div>

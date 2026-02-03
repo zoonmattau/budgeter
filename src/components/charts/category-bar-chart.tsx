@@ -7,10 +7,9 @@ import {
   YAxis,
   Tooltip,
   Cell,
-  ReferenceLine,
 } from 'recharts'
 import { ChartWrapper } from './chart-wrapper'
-import { formatCurrency, formatCompactCurrency } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 
 interface CategoryBarChartProps {
   data: { name: string; spent: number; budgeted: number; color: string }[]
@@ -29,24 +28,27 @@ export function CategoryBarChart({ data, height = 300 }: CategoryBarChartProps) 
     )
   }
 
-  const maxValue = Math.max(
-    ...data.flatMap((d) => [d.spent, d.budgeted])
-  )
+  // Convert to percentage of budget (100% = on budget)
+  const chartData = data.map(d => ({
+    ...d,
+    percent: d.budgeted > 0 ? (d.spent / d.budgeted) * 100 : 0,
+  }))
 
   return (
     <ChartWrapper height={height}>
       <BarChart
-        data={data}
+        data={chartData}
         layout="vertical"
-        margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+        margin={{ top: 5, right: 50, left: 10, bottom: 5 }}
       >
         <XAxis
           type="number"
           axisLine={false}
           tickLine={false}
           tick={{ fontSize: 11, fill: '#9ca3af' }}
-          tickFormatter={(value) => formatCompactCurrency(value)}
-          domain={[0, maxValue * 1.1]}
+          tickFormatter={(value) => `${Math.round(value)}%`}
+          domain={[0, (dataMax: number) => Math.max(100, dataMax * 1.1)]}
+          ticks={[0, 25, 50, 75, 100]}
         />
 
         <YAxis
@@ -59,10 +61,13 @@ export function CategoryBarChart({ data, height = 300 }: CategoryBarChartProps) 
         />
 
         <Tooltip
-          formatter={(value, name) => [
-            formatCurrency(Number(value)),
-            name === 'spent' ? 'Spent' : 'Budget',
-          ]}
+          formatter={(value, name, props) => {
+            const item = props.payload
+            return [
+              `${formatCurrency(item.spent)} of ${formatCurrency(item.budgeted)} (${Math.round(Number(value))}%)`,
+              'Spent',
+            ]
+          }}
           contentStyle={{
             borderRadius: '12px',
             border: 'none',
@@ -71,26 +76,11 @@ export function CategoryBarChart({ data, height = 300 }: CategoryBarChartProps) 
           }}
         />
 
-        {/* Budget reference lines for each category */}
-        {data.map((item, index) => (
-          <ReferenceLine
-            key={`ref-${index}`}
-            x={item.budgeted}
-            stroke="#22c55e"
-            strokeDasharray="3 3"
-            strokeWidth={1.5}
-            segment={[
-              { y: index - 0.35 },
-              { y: index + 0.35 },
-            ]}
-          />
-        ))}
-
-        <Bar dataKey="spent" radius={[0, 6, 6, 0]} barSize={24}>
-          {data.map((entry, index) => (
+        <Bar dataKey="percent" radius={[0, 6, 6, 0]} barSize={24}>
+          {chartData.map((entry, index) => (
             <Cell
               key={`cell-${index}`}
-              fill={entry.spent > entry.budgeted ? '#ef4444' : entry.color}
+              fill={entry.percent > 100 ? '#ef4444' : entry.percent > 80 ? '#f59e0b' : entry.color}
             />
           ))}
         </Bar>

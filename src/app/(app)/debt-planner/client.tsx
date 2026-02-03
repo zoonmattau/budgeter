@@ -50,7 +50,7 @@ interface DebtPlannerClientProps {
 export function DebtPlannerClient({
   debts,
   monthlyIncome,
-  monthlyBills,
+  monthlyBills: _monthlyBills,
   budgetAllocations,
   expenseAllocations = 0,
   savingsAllocations = 0,

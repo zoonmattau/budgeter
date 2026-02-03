@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Plus, TrendingUp, TrendingDown, Users, CreditCard, Landmark, Wallet, PiggyBank, ChevronRight } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, Users, CreditCard, Landmark, Wallet, PiggyBank, ChevronRight, Calculator } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
 import { AccountsList } from '@/components/net-worth/accounts-list'
@@ -84,6 +84,25 @@ export default async function NetWorthPage() {
           </div>
         </div>
       </div>
+
+      {/* Debt Planner Link - shown when net worth is negative */}
+      {netWorth < 0 && totalLiabilities > 0 && (
+        <Link
+          href="/debt-planner"
+          className="card flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <Calculator className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="font-medium text-gray-900">Debt Payoff Planner</p>
+              <p className="text-xs text-gray-500">Create a plan to become debt-free</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-amber-600" />
+        </Link>
+      )}
 
       {/* Social/Leaderboard Link */}
       <Link

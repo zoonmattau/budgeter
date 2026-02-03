@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { ArrowRight, Wallet } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { MemberBreakdown, MemberSpending } from '@/components/ui/member-breakdown'
+import { InfoTooltip } from '@/components/ui/tooltip'
 import type { ViewScope } from '@/lib/scope-context'
 
 interface BudgetOverviewProps {
@@ -118,11 +119,17 @@ export function BudgetOverview({
 
       <div className="flex items-center justify-between text-sm">
         <div>
-          <p className="text-bloom-100">Spent</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-bloom-100">Spent</p>
+            <InfoTooltip text="Total expenses this month across all categories" />
+          </div>
           <p className="font-semibold">{formatCurrency(totalSpent)}</p>
         </div>
         <div className="text-right">
-          <p className="text-bloom-100">Remaining</p>
+          <div className="flex items-center justify-end gap-1.5">
+            <p className="text-bloom-100">Remaining</p>
+            <InfoTooltip text="Amount left to spend before hitting your budget limit" />
+          </div>
           <p className={`font-semibold ${isOverBudget ? 'text-coral-300' : ''}`}>
             {formatCurrency(Math.abs(remaining))}
             {isOverBudget && ' over'}

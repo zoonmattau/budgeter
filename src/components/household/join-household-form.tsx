@@ -83,7 +83,7 @@ export function JoinHouseholdForm({ onBack, onComplete }: JoinHouseholdFormProps
       setHouseholdName(household.name)
       setHouseholdId(household.id)
       setStep('success')
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
     }
 

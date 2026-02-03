@@ -9,7 +9,7 @@ import { MemberBreakdown, MemberSpending } from '@/components/ui/member-breakdow
 import { TransactionEditModal } from './transaction-edit-modal'
 import type { Tables } from '@/lib/database.types'
 import type { HouseholdMember } from '@/lib/scope-context'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Pencil } from 'lucide-react'
 
 type TransactionWithCategory = Tables<'transactions'> & {
   categories: Tables<'categories'> | null
@@ -19,6 +19,7 @@ type TransactionWithCategory = Tables<'transactions'> & {
 interface TransactionsListProps {
   transactions: TransactionWithCategory[]
   categories?: Tables<'categories'>[]
+  creditCards?: Tables<'accounts'>[]
   showMemberBadge?: boolean
   members?: HouseholdMember[]
   currentUserId?: string
@@ -28,6 +29,7 @@ interface TransactionsListProps {
 export function TransactionsList({
   transactions,
   categories = [],
+  creditCards = [],
   showMemberBadge = false,
   members = [],
   currentUserId,
@@ -101,7 +103,9 @@ export function TransactionsList({
         </div>
       )}
 
-      {Object.entries(grouped).map(([date, dayTransactions]) => {
+      {Object.entries(grouped)
+        .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
+        .map(([date, dayTransactions]) => {
         const parsedDate = parseISO(date)
         let dateLabel = format(parsedDate, 'EEEE, MMM d')
         if (isToday(parsedDate)) dateLabel = 'Today'
@@ -128,7 +132,7 @@ export function TransactionsList({
                   <button
                     key={transaction.id}
                     onClick={() => setSelectedTransaction(transaction)}
-                    className="flex items-center justify-between py-3 first:pt-0 last:pb-0 w-full text-left hover:bg-gray-50 -mx-4 px-4 transition-colors cursor-pointer"
+                    className="group flex items-center justify-between py-3 first:pt-0 last:pb-0 w-full text-left hover:bg-gray-50 -mx-4 px-4 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       {showMemberBadge && (
@@ -155,9 +159,12 @@ export function TransactionsList({
                         </p>
                       </div>
                     </div>
-                    <p className={`font-semibold flex-shrink-0 ml-3 ${isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
-                      {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
-                    </p>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                      <p className={`font-semibold ${isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
+                        {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+                      </p>
+                      <Pencil className="w-4 h-4 text-gray-300 group-hover:text-gray-500" />
+                    </div>
                   </button>
                 )
               })}
@@ -177,6 +184,7 @@ export function TransactionsList({
         <TransactionEditModal
           transaction={selectedTransaction}
           categories={categories.filter(c => c.type === selectedTransaction.type)}
+          creditCards={creditCards}
           onClose={() => setSelectedTransaction(null)}
         />
       )}

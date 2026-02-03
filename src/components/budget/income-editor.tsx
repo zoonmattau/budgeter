@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Pencil, X, Plus, Trash2 } from 'lucide-react'
+import { Pencil, X, Plus, Trash2, Calendar } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { formatCurrency } from '@/lib/utils'
+import { PayScheduleModal } from './pay-schedule-modal'
+import { format, parseISO } from 'date-fns'
 import type { Tables } from '@/lib/database.types'
 
 // Time frame options with conversion to monthly
@@ -30,6 +32,7 @@ export function IncomeEditor({ incomeEntries, currentMonth, onUpdate }: IncomeEd
   const [newAmount, setNewAmount] = useState('')
   const [newTimeFrame, setNewTimeFrame] = useState<TimeFrame>('month')
   const [saving, setSaving] = useState(false)
+  const [scheduleModalEntry, setScheduleModalEntry] = useState<Tables<'income_entries'> | null>(null)
 
   const supabase = createClient()
   const totalIncome = entries.reduce((sum, e) => sum + Number(e.amount), 0)
@@ -143,10 +146,32 @@ export function IncomeEditor({ incomeEntries, currentMonth, onUpdate }: IncomeEd
           ) : (
             entries.map((entry) => (
               <div key={entry.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 text-sm">{entry.source}</p>
+                  {entry.pay_frequency ? (
+                    <button
+                      onClick={() => setScheduleModalEntry(entry)}
+                      className="text-xs text-bloom-600 hover:text-bloom-700 flex items-center gap-1 mt-0.5"
+                    >
+                      <Calendar className="w-3 h-3" />
+                      {entry.pay_frequency.charAt(0).toUpperCase() + entry.pay_frequency.slice(1)}
+                      {entry.next_pay_date && (
+                        <span className="text-gray-400">
+                          · Next {format(parseISO(entry.next_pay_date), 'MMM d')}
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setScheduleModalEntry(entry)}
+                      className="text-xs text-gray-400 hover:text-bloom-600 flex items-center gap-1 mt-0.5"
+                    >
+                      <Calendar className="w-3 h-3" />
+                      Set schedule
+                    </button>
+                  )}
                 </div>
-                <div className="w-28">
+                <div className="w-24">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <input
@@ -234,6 +259,30 @@ export function IncomeEditor({ incomeEntries, currentMonth, onUpdate }: IncomeEd
           animation: slide-up 0.3s ease-out;
         }
       `}</style>
+
+      {scheduleModalEntry && (
+        <PayScheduleModal
+          incomeId={scheduleModalEntry.id}
+          source={scheduleModalEntry.source}
+          currentFrequency={scheduleModalEntry.pay_frequency}
+          currentPayDay={scheduleModalEntry.pay_day}
+          currentNextPayDate={scheduleModalEntry.next_pay_date}
+          onClose={() => setScheduleModalEntry(null)}
+          onSave={async () => {
+            // Refetch the updated entry to get the new pay schedule
+            const { data } = await supabase
+              .from('income_entries')
+              .select('*')
+              .eq('id', scheduleModalEntry.id)
+              .single()
+
+            if (data) {
+              setEntries(entries.map(e => e.id === data.id ? data : e))
+            }
+            onUpdate()
+          }}
+        />
+      )}
     </div>
   )
 }

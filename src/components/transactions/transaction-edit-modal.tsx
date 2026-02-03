@@ -1,27 +1,41 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Trash2, CheckCircle2 } from 'lucide-react'
+import { X, Trash2, CheckCircle2, CreditCard, RefreshCw } from 'lucide-react'
+import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { DatePicker } from '@/components/ui/date-picker'
+import { formatCurrency } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
 
 type TransactionWithCategory = Tables<'transactions'> & {
   categories: Tables<'categories'> | null
+  accounts?: Tables<'accounts'> | null
+}
+
+type BillWithPayments = Tables<'bills'> & {
+  categories: Tables<'categories'> | null
+  paymentHistory?: Array<{
+    id: string
+    date: string
+    amount: number
+  }>
 }
 
 interface TransactionEditModalProps {
   transaction: TransactionWithCategory
   categories: Tables<'categories'>[]
+  creditCards?: Tables<'accounts'>[]
   onClose: () => void
 }
 
 export function TransactionEditModal({
   transaction,
   categories,
+  creditCards = [],
   onClose,
 }: TransactionEditModalProps) {
   const router = useRouter()
@@ -33,12 +47,63 @@ export function TransactionEditModal({
   const [selectedCategory, setSelectedCategory] = useState<Tables<'categories'> | null>(
     transaction.categories
   )
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(transaction.account_id)
   const [loading, setLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Bill related state
+  const [linkedBill, setLinkedBill] = useState<BillWithPayments | null>(null)
+  const [loadingBill, setLoadingBill] = useState(false)
+
   const isIncome = transaction.type === 'income'
+  const isRecurring = transaction.is_recurring
+
+  // Fetch linked bill and payment history
+  useEffect(() => {
+    async function fetchBillData() {
+      if (!isRecurring && !transaction.bill_id) return
+
+      setLoadingBill(true)
+
+      // Try to find a matching bill by description/amount or bill_id
+      let billQuery = supabase
+        .from('bills')
+        .select('*, categories(*)')
+
+      if (transaction.bill_id) {
+        billQuery = billQuery.eq('id', transaction.bill_id)
+      } else {
+        // Match by description and approximate amount
+        billQuery = billQuery
+          .eq('user_id', transaction.user_id)
+          .ilike('name', transaction.description || '')
+      }
+
+      const { data: bills } = await billQuery.limit(1)
+
+      if (bills && bills.length > 0) {
+        const bill = bills[0] as BillWithPayments
+
+        // Fetch payment history - transactions that match this bill
+        const { data: payments } = await supabase
+          .from('transactions')
+          .select('id, date, amount')
+          .eq('user_id', transaction.user_id)
+          .or(`bill_id.eq.${bill.id},and(description.ilike.${bill.name},is_recurring.eq.true)`)
+          .order('date', { ascending: false })
+          .limit(10)
+
+        bill.paymentHistory = payments || []
+        setLinkedBill(bill)
+      }
+
+      setLoadingBill(false)
+    }
+
+    fetchBillData()
+  }, [transaction, isRecurring, supabase])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -53,9 +118,40 @@ export function TransactionEditModal({
         description,
         date,
         category_id: selectedCategory.id,
+        account_id: selectedCardId,
         updated_at: new Date().toISOString(),
       })
       .eq('id', transaction.id)
+
+    // Update credit card balance if card changed
+    if (!error && selectedCardId !== transaction.account_id) {
+      // Remove from old card
+      if (transaction.account_id) {
+        const oldCard = creditCards.find(c => c.id === transaction.account_id)
+        if (oldCard) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: oldCard.balance - transaction.amount,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', transaction.account_id)
+        }
+      }
+      // Add to new card
+      if (selectedCardId) {
+        const newCard = creditCards.find(c => c.id === selectedCardId)
+        if (newCard) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: newCard.balance + parseFloat(amount),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', selectedCardId)
+        }
+      }
+    }
 
     if (!error) {
       setShowSuccess(true)
@@ -70,6 +166,20 @@ export function TransactionEditModal({
 
   async function handleDelete() {
     setDeleting(true)
+
+    // If on a credit card, reduce the balance
+    if (transaction.account_id) {
+      const card = creditCards.find(c => c.id === transaction.account_id)
+      if (card) {
+        await supabase
+          .from('accounts')
+          .update({
+            balance: card.balance - transaction.amount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', transaction.account_id)
+      }
+    }
 
     const { error } = await supabase
       .from('transactions')
@@ -88,7 +198,10 @@ export function TransactionEditModal({
     parseFloat(amount) !== transaction.amount ||
     description !== (transaction.description || '') ||
     date !== transaction.date ||
-    selectedCategory?.id !== transaction.category_id
+    selectedCategory?.id !== transaction.category_id ||
+    selectedCardId !== transaction.account_id
+
+  const currentCard = creditCards.find(c => c.id === selectedCardId)
 
   return (
     <div
@@ -113,7 +226,7 @@ export function TransactionEditModal({
               isIncome ? 'text-sprout-700' : 'text-gray-900'
             }`}
           >
-            Edit {isIncome ? 'Income' : 'Expense'}
+            Edit {isIncome ? 'Income' : isRecurring ? 'Recurring Payment' : 'Expense'}
           </h2>
           <button
             onClick={onClose}
@@ -150,10 +263,16 @@ export function TransactionEditModal({
             <h3 className="font-display text-xl font-semibold text-gray-900 mb-2">
               Delete Transaction?
             </h3>
-            <p className="text-gray-500 text-sm mb-6">
-              This will permanently delete this {isIncome ? 'income' : 'expense'}. This action
-              cannot be undone.
+            <p className="text-gray-500 text-sm mb-4">
+              This will permanently delete this {isIncome ? 'income' : 'expense'} record. This action cannot be undone.
             </p>
+            {(isRecurring || linkedBill) && (
+              <div className="p-3 bg-amber-50 rounded-xl mb-4">
+                <p className="text-amber-700 text-sm">
+                  <strong>Note:</strong> This only deletes this single transaction. Your recurring bill &quot;{linkedBill?.name || 'subscription'}&quot; will remain active and continue to generate future payments.
+                </p>
+              </div>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
@@ -173,6 +292,54 @@ export function TransactionEditModal({
         ) : (
           /* Edit Form */
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Linked Bill Info */}
+            {(isRecurring || linkedBill) && (
+              <div className="p-4 bg-bloom-50 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-bloom-700">
+                  <RefreshCw className="w-4 h-4" />
+                  <span className="font-medium text-sm">Recurring Payment</span>
+                </div>
+
+                {loadingBill ? (
+                  <p className="text-sm text-bloom-600">Loading bill details...</p>
+                ) : linkedBill ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Bill Name</span>
+                      <span className="font-medium text-gray-900">{linkedBill.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Frequency</span>
+                      <span className="text-sm text-gray-700 capitalize">{linkedBill.frequency}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Next Due</span>
+                      <span className="text-sm text-gray-700">{format(new Date(linkedBill.next_due), 'MMM d, yyyy')}</span>
+                    </div>
+
+                    {/* Payment History */}
+                    {linkedBill.paymentHistory && linkedBill.paymentHistory.length > 0 && (
+                      <div className="pt-3 border-t border-bloom-200">
+                        <p className="text-sm font-medium text-gray-700 mb-2">
+                          Payment History ({linkedBill.paymentHistory.length} payments)
+                        </p>
+                        <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                          {linkedBill.paymentHistory.slice(0, 5).map((payment) => (
+                            <div key={payment.id} className="flex items-center justify-between text-sm">
+                              <span className="text-gray-500">{format(new Date(payment.date), 'MMM d, yyyy')}</span>
+                              <span className="text-gray-700">{formatCurrency(payment.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-bloom-600">No linked bill found</p>
+                )}
+              </div>
+            )}
+
             {/* Amount */}
             <div>
               <label className="label">Amount</label>
@@ -234,12 +401,52 @@ export function TransactionEditModal({
               )}
             </div>
 
+            {/* Credit Card Selection - for expenses */}
+            {!isIncome && creditCards.length > 0 && (
+              <div>
+                <label className="label">Payment Method</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCardId(null)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                      selectedCardId === null
+                        ? 'bg-gray-200 text-gray-800'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
+                    }`}
+                  >
+                    Cash/Debit
+                  </button>
+                  {creditCards.map((card) => (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => setSelectedCardId(card.id)}
+                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                        selectedCardId === card.id
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-gray-100 text-gray-500 hover:bg-purple-50'
+                      }`}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      {card.name}
+                    </button>
+                  ))}
+                </div>
+                {currentCard && (
+                  <p className="text-xs text-purple-600 mt-1.5">
+                    Current balance: {formatCurrency(currentCard.balance)}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Date */}
             <DatePicker label="Date" value={date} onChange={setDate} />
 
             {/* Description */}
             <div>
-              <label className="label">Description (optional)</label>
+              <label className="label">Description</label>
               <input
                 type="text"
                 value={description}

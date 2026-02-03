@@ -1,9 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { format, isToday, isYesterday } from 'date-fns'
+import { Pencil } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { MemberBadge, getMemberIndex } from '@/components/ui/member-badge'
+import { TransactionEditModal } from '@/components/transactions/transaction-edit-modal'
 import type { Tables } from '@/lib/database.types'
 import type { HouseholdMember } from '@/lib/scope-context'
 
@@ -14,6 +17,8 @@ type TransactionWithCategory = Tables<'transactions'> & {
 
 interface RecentTransactionsProps {
   transactions: TransactionWithCategory[]
+  categories: Tables<'categories'>[]
+  creditCards: Tables<'accounts'>[]
   showMemberBadge?: boolean
   members?: HouseholdMember[]
   currentUserId?: string
@@ -21,10 +26,13 @@ interface RecentTransactionsProps {
 
 export function RecentTransactions({
   transactions,
+  categories,
+  creditCards,
   showMemberBadge = false,
   members = [],
   currentUserId,
 }: RecentTransactionsProps) {
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithCategory | null>(null)
   if (transactions.length === 0) {
     return (
       <div className="card text-center py-6">
@@ -72,12 +80,31 @@ export function RecentTransactions({
                 <p className="text-xs text-gray-400">{dateText}</p>
               </div>
             </div>
-            <p className={`font-semibold flex-shrink-0 ml-2 ${isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
-              {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
-            </p>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+              <p className={`font-semibold ${isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
+                {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+              </p>
+              <button
+                onClick={() => setSelectedTransaction(transaction)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Edit transaction"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )
       })}
+
+      {/* Edit Modal */}
+      {selectedTransaction && categories.length > 0 && (
+        <TransactionEditModal
+          transaction={selectedTransaction}
+          categories={categories}
+          creditCards={creditCards}
+          onClose={() => setSelectedTransaction(null)}
+        />
+      )}
     </div>
   )
 }

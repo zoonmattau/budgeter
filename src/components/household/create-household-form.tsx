@@ -77,7 +77,7 @@ export function CreateHouseholdForm({ onBack, onComplete }: CreateHouseholdFormP
       setInviteCode(code)
       setHouseholdId(household.id)
       setStep('invite')
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
     }
 

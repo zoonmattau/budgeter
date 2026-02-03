@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Receipt, Tv, Calendar, CheckCircle2, AlertCircle, Plus } from 'lucide-react'
+import { Receipt, Calendar, AlertCircle, Plus } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { differenceInDays, isPast, isToday } from 'date-fns'
 
@@ -11,7 +11,6 @@ interface Bill {
   amount: number
   next_due: string
   is_one_off?: boolean
-  bill_type?: 'bill' | 'subscription'
   is_active: boolean
 }
 
@@ -20,17 +19,11 @@ interface BillsSummaryProps {
 }
 
 export function BillsSummary({ bills }: BillsSummaryProps) {
-  // Separate bills and subscriptions
   const activeBills = bills.filter(b => b.is_active)
-  const regularBills = activeBills.filter(b => b.bill_type !== 'subscription')
-  const subscriptions = activeBills.filter(b => b.bill_type === 'subscription')
+  const recurringBills = activeBills.filter(b => !b.is_one_off)
+  const totalRecurringAmount = recurringBills.reduce((sum, b) => sum + Number(b.amount), 0)
 
-  // Calculate totals
-  const totalBillsAmount = regularBills.reduce((sum, b) => sum + Number(b.amount), 0)
-  const totalSubscriptionsAmount = subscriptions.reduce((sum, b) => sum + Number(b.amount), 0)
-  const totalAmount = totalBillsAmount + totalSubscriptionsAmount
-
-  // Find upcoming/overdue
+  // Find upcoming/overdue (all active bills, not just recurring)
   const today = new Date()
   const upcomingBills = activeBills.filter(b => {
     const dueDate = new Date(b.next_due)
@@ -43,6 +36,17 @@ export function BillsSummary({ bills }: BillsSummaryProps) {
     return isPast(dueDate) && !isToday(dueDate)
   })
 
+  // Find next upcoming bill for status display
+  const futureBills = activeBills
+    .filter(b => {
+      const dueDate = new Date(b.next_due)
+      return differenceInDays(dueDate, today) > 7
+    })
+    .sort((a, b) => new Date(a.next_due).getTime() - new Date(b.next_due).getTime())
+
+  const nextBill = futureBills[0]
+  const daysUntilNext = nextBill ? differenceInDays(new Date(nextBill.next_due), today) : null
+
   if (activeBills.length === 0) {
     return null
   }
@@ -54,9 +58,9 @@ export function BillsSummary({ bills }: BillsSummaryProps) {
         <div className="flex items-center gap-3">
           <Link
             href="/bills/new"
-            className="w-7 h-7 rounded-full bg-amber-100 hover:bg-amber-200 flex items-center justify-center transition-colors"
+            className="w-7 h-7 rounded-full bg-bloom-100 hover:bg-bloom-200 flex items-center justify-center transition-colors"
           >
-            <Plus className="w-4 h-4 text-amber-600" />
+            <Plus className="w-4 h-4 text-bloom-600" />
           </Link>
           <Link href="/bills" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
             See all
@@ -64,39 +68,18 @@ export function BillsSummary({ bills }: BillsSummaryProps) {
         </div>
       </div>
 
-      <div className="card">
-        {/* Summary stats */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-              <Receipt className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Bills ({regularBills.length})</p>
-              <p className="text-lg font-bold text-gray-900">{formatCurrency(totalBillsAmount)}</p>
-            </div>
+      <Link href="/bills" className="card block hover:shadow-md transition-shadow">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-bloom-100 flex items-center justify-center">
+            <Receipt className="w-5 h-5 text-bloom-600" />
           </div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-              <Tv className="w-5 h-5 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Subscriptions ({subscriptions.length})</p>
-              <p className="text-lg font-bold text-gray-900">{formatCurrency(totalSubscriptionsAmount)}</p>
-            </div>
+          <div>
+            <p className="text-xs text-gray-500">Recurring Bills ({recurringBills.length})</p>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(totalRecurringAmount)}/month</p>
           </div>
         </div>
 
-        {/* Total bar */}
-        <div className="p-3 bg-gradient-to-r from-amber-50 to-purple-50 rounded-xl mb-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Monthly Total</span>
-            <span className="text-xl font-bold text-gray-900">{formatCurrency(totalAmount)}</span>
-          </div>
-        </div>
-
-        {/* Status indicators */}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
           {overdueBills.length > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 rounded-full">
               <AlertCircle className="w-4 h-4 text-red-500" />
@@ -113,16 +96,16 @@ export function BillsSummary({ bills }: BillsSummaryProps) {
               </span>
             </div>
           )}
-          {overdueBills.length === 0 && upcomingBills.length === 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-sprout-50 rounded-full">
-              <CheckCircle2 className="w-4 h-4 text-sprout-500" />
-              <span className="text-sm font-medium text-sprout-700">
-                All paid up
+          {overdueBills.length === 0 && upcomingBills.length === 0 && nextBill && daysUntilNext && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-full">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-600">
+                Next bill in {daysUntilNext} days
               </span>
             </div>
           )}
         </div>
-      </div>
+      </Link>
     </section>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { format, differenceInDays, isToday, isTomorrow, isYesterday } from 'date-fns'
+import { differenceInDays, isToday, isTomorrow, isYesterday } from 'date-fns'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { createClient } from '@/lib/supabase/client'
@@ -43,7 +43,7 @@ export function SmartPredictions({ predictions, expenseCategories }: SmartPredic
   const [localPredictions, setLocalPredictions] = useState(predictions)
   const [expanded, setExpanded] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
-  const [showLogModal, setShowLogModal] = useState<string | null>(null)
+  const [, setShowLogModal] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 

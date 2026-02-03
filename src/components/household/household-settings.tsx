@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Copy, Check, Users, UserPlus, LogOut, Crown, Plus, Share2, Info, Link, Mail, Trash2, Loader2, X } from 'lucide-react'
+import { Copy, Check, Users, UserPlus, LogOut, Crown, Plus, Share2, Info, Link, Mail, Loader2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Tables } from '@/lib/database.types'
 
@@ -26,14 +26,6 @@ interface HouseholdSettingsProps {
   currentUserId: string
 }
 
-function generateInviteCode(): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return code
-}
 
 export function HouseholdSettings({ membership, members, currentUserId }: HouseholdSettingsProps) {
   const [copied, setCopied] = useState(false)
@@ -64,6 +56,7 @@ export function HouseholdSettings({ membership, members, currentUserId }: Househ
     if (membership?.household_id && membership.role === 'owner') {
       fetchPendingInvitations()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [membership?.household_id, membership?.role])
 
   async function fetchPendingInvitations() {
@@ -107,7 +100,7 @@ export function HouseholdSettings({ membership, members, currentUserId }: Househ
           text: `You've been invited to join ${membership.households.name} on Seedling!`,
           url: inviteUrl,
         })
-      } catch (err) {
+      } catch {
         // User cancelled or share failed - fall back to copy
         handleCopyLink()
       }
@@ -147,7 +140,7 @@ export function HouseholdSettings({ membership, members, currentUserId }: Househ
       setInviteEmail('')
       fetchPendingInvitations()
       setTimeout(() => setInviteSuccess(false), 3000)
-    } catch (err) {
+    } catch {
       setInviteError('Failed to send invitation')
     }
     setSendingInvite(false)
@@ -298,7 +291,7 @@ export function HouseholdSettings({ membership, members, currentUserId }: Househ
 
       setNewInviteCode(data.inviteCode)
       setCreating(false)
-    } catch (err) {
+    } catch {
       setError('Failed to create household')
       setCreating(false)
     }

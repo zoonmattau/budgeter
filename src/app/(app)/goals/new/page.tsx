@@ -41,6 +41,7 @@ export default function NewGoalPage() {
     if (goalType === 'debt_payoff') {
       fetchDebtAccounts()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalType])
 
   async function fetchDebtAccounts() {
@@ -84,8 +85,6 @@ export default function NewGoalPage() {
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
-    const selectedAccount = debtAccounts.find(a => a.id === selectedAccountId)
 
     const { error } = await supabase.from('goals').insert({
       user_id: user.id,

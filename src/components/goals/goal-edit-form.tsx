@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2, Plus, Calendar, CreditCard, Target, CheckCircle2, Users } from 'lucide-react'
+import { ArrowLeft, Trash2, Plus, CreditCard, CheckCircle2, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
