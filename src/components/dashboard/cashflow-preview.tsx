@@ -7,15 +7,24 @@ import { ArrowRight, ArrowUpCircle, ArrowDownCircle, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import type { IncomeEntry, Bill } from '@/lib/timeline-calculator'
 
+interface Transaction {
+  id: string
+  amount: number
+  date: string
+  type: string
+  description: string
+}
+
 interface CashflowPreviewProps {
   accounts: unknown[]
   incomeEntries: IncomeEntry[]
   bills: Bill[]
+  transactions?: Transaction[]
 }
 
 interface DayEvents {
   date: string
-  events: { type: 'income' | 'bill'; name: string; amount: number }[]
+  events: { type: 'income' | 'bill' | 'expense'; name: string; amount: number }[]
 }
 
 function formatDayLabel(dateStr: string): { day: string; date: string } {
@@ -30,7 +39,8 @@ function generateDaysWithEvents(
   incomeEntries: IncomeEntry[],
   bills: Bill[],
   pastDays: number,
-  futureDays: number
+  futureDays: number,
+  transactions: Transaction[] = [],
 ): { days: DayEvents[]; todayIndex: number } {
   const today = startOfDay(new Date())
   const start = subDays(today, pastDays)
@@ -137,6 +147,20 @@ function generateDaysWithEvents(
     }
   }
 
+  // Add expense totals from actual transactions (past/today only)
+  const todayStr = format(today, 'yyyy-MM-dd')
+  const expenseByDate = new Map<string, number>()
+  for (const txn of transactions) {
+    if (txn.type === 'expense' && txn.date <= todayStr) {
+      expenseByDate.set(txn.date, (expenseByDate.get(txn.date) || 0) + Number(txn.amount))
+    }
+  }
+  for (const [dateKey, total] of expenseByDate) {
+    const existing = eventsByDate.get(dateKey) || []
+    existing.push({ type: 'expense', name: 'Daily spending', amount: total })
+    eventsByDate.set(dateKey, existing)
+  }
+
   // Generate day array
   for (let i = 0; i < totalDays; i++) {
     const date = addDays(start, i)
@@ -150,7 +174,7 @@ function generateDaysWithEvents(
   return { days: result, todayIndex: pastDays }
 }
 
-export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) {
+export function CashflowPreview({ incomeEntries, bills, transactions = [] }: CashflowPreviewProps) {
   const [selectedDay, setSelectedDay] = useState<DayEvents | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const todayRef = useRef<HTMLButtonElement>(null)
@@ -190,7 +214,7 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
     )
   }
 
-  const { days: daysWithEvents } = generateDaysWithEvents(incomeEntries, bills, 7, 14)
+  const { days: daysWithEvents } = generateDaysWithEvents(incomeEntries, bills, 7, 14, transactions)
 
   return (
     <section>
@@ -209,10 +233,10 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
             const { day: dayLabel, date } = formatDayLabel(day.date)
             const dayDate = parseISO(day.date)
             const isPast = isBefore(dayDate, startOfDay(new Date())) && !isToday(dayDate)
-            const hasIncome = day.events.some(e => e.type === 'income')
-            const hasBill = day.events.some(e => e.type === 'bill')
             const totalIn = day.events.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0)
-            const totalOut = day.events.filter(e => e.type === 'bill').reduce((sum, e) => sum + e.amount, 0)
+            const totalOut = day.events.filter(e => e.type === 'bill' || e.type === 'expense').reduce((sum, e) => sum + e.amount, 0)
+            const net = totalIn - totalOut
+            const hasEvents = day.events.length > 0
 
             return (
               <button
@@ -223,10 +247,10 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
                   isToday(dayDate)
                     ? 'bg-bloom-100 border-2 border-bloom-300'
                     : isPast
-                    ? day.events.length > 0
+                    ? hasEvents
                       ? 'bg-gray-100 border border-gray-200 hover:border-gray-300 opacity-70'
                       : 'bg-gray-50 border border-gray-100 hover:border-gray-200 opacity-50'
-                    : day.events.length > 0
+                    : hasEvents
                     ? 'bg-white border border-gray-200 hover:border-gray-300'
                     : 'bg-gray-50 border border-gray-100 hover:border-gray-200'
                 }`}
@@ -242,28 +266,20 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
                   {date}
                 </p>
 
-                {/* Show totals or event indicators */}
-                {day.events.length > 0 ? (
-                  <div className="space-y-1">
-                    {hasIncome && (
-                      <div className="flex items-center justify-center gap-0.5">
-                        <ArrowUpCircle className="w-3 h-3 text-sprout-500" />
-                        <span className="text-[10px] font-semibold text-sprout-600">
-                          +${Math.round(totalIn)}
-                        </span>
-                      </div>
+                {/* Single net value for the day */}
+                {hasEvents ? (
+                  <div className="flex items-center justify-center gap-0.5">
+                    {net >= 0 ? (
+                      <ArrowUpCircle className="w-3 h-3 text-sprout-500" />
+                    ) : (
+                      <ArrowDownCircle className="w-3 h-3 text-coral-500" />
                     )}
-                    {hasBill && (
-                      <div className="flex items-center justify-center gap-0.5">
-                        <ArrowDownCircle className="w-3 h-3 text-coral-500" />
-                        <span className="text-[10px] font-semibold text-coral-600">
-                          -${Math.round(totalOut)}
-                        </span>
-                      </div>
-                    )}
+                    <span className={`text-[10px] font-semibold ${net >= 0 ? 'text-sprout-600' : 'text-coral-600'}`}>
+                      {net >= 0 ? '+' : '-'}${Math.round(Math.abs(net))}
+                    </span>
                   </div>
                 ) : (
-                  <div className="h-8 flex items-center justify-center">
+                  <div className="h-4 flex items-center justify-center">
                     <span className="text-[10px] text-gray-300">—</span>
                   </div>
                 )}
@@ -320,13 +336,17 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
                     <div
                       key={idx}
                       className={`flex items-center justify-between p-4 rounded-xl ${
-                        event.type === 'income' ? 'bg-sprout-50' : 'bg-gray-50'
+                        event.type === 'income' ? 'bg-sprout-50' : event.type === 'expense' ? 'bg-amber-50' : 'bg-gray-50'
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         {event.type === 'income' ? (
                           <div className="w-10 h-10 rounded-full bg-sprout-100 flex items-center justify-center">
                             <ArrowUpCircle className="w-5 h-5 text-sprout-600" />
+                          </div>
+                        ) : event.type === 'expense' ? (
+                          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                            <ArrowDownCircle className="w-5 h-5 text-amber-600" />
                           </div>
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-coral-100 flex items-center justify-center">
@@ -336,12 +356,12 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
                         <div>
                           <span className="font-medium text-gray-900">{event.name}</span>
                           <p className="text-xs text-gray-500">
-                            {event.type === 'income' ? 'Income' : 'Bill'}
+                            {event.type === 'income' ? 'Income' : event.type === 'expense' ? 'Spending' : 'Bill'}
                           </p>
                         </div>
                       </div>
                       <span className={`text-lg font-semibold ${
-                        event.type === 'income' ? 'text-sprout-600' : 'text-gray-700'
+                        event.type === 'income' ? 'text-sprout-600' : event.type === 'expense' ? 'text-amber-600' : 'text-gray-700'
                       }`}>
                         {event.type === 'income' ? '+' : '-'}{formatCurrency(event.amount)}
                       </span>

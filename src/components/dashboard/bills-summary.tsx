@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Receipt, Calendar, AlertCircle, Plus, ChevronDown, ChevronUp, CreditCard } from 'lucide-react'
+import { Receipt, Calendar, AlertCircle, Plus, ChevronDown, ChevronUp, CreditCard, Wallet } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { differenceInDays, isPast, isToday, isTomorrow, format } from 'date-fns'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -114,18 +114,31 @@ export function BillsSummary({ bills, debtAccounts = [], recentTransactions = []
     category: bill.categories,
   }))
 
-  const transactionItems = recentTransactions.map(t => ({
-    id: `txn-${t.id}`,
-    name: t.description,
-    amount: t.amount,
-    dueDate: new Date(t.date + 'T00:00:00'),
+  // Aggregate past-day expenses into daily totals
+  const dailyExpenseTotals = new Map<string, number>()
+  recentTransactions
+    .filter(t => t.type === 'expense')
+    .forEach(t => {
+      const current = dailyExpenseTotals.get(t.date) || 0
+      dailyExpenseTotals.set(t.date, current + t.amount)
+    })
+
+  const dailySpendItems = Array.from(dailyExpenseTotals.entries()).map(([date, total]) => ({
+    id: `daily-${date}`,
+    name: `Daily spending`,
+    amount: total,
+    dueDate: new Date(date + 'T00:00:00'),
     isDebt: false as const,
     isTransaction: true as const,
-    txnType: t.type,
-    category: t.categories,
+    txnType: 'expense' as string | undefined,
+    category: undefined as Bill['categories'],
   }))
 
-  const allPayments = [...billItems.map(b => ({ ...b, isTransaction: false as const, txnType: undefined as string | undefined })), ...debtPayments.map(d => ({ ...d, isTransaction: false as const, txnType: undefined as string | undefined })), ...transactionItems].sort(
+  const allPayments = [
+    ...billItems.map(b => ({ ...b, isTransaction: false as const, txnType: undefined as string | undefined })),
+    ...debtPayments.map(d => ({ ...d, isTransaction: false as const, txnType: undefined as string | undefined })),
+    ...dailySpendItems,
+  ].sort(
     (a, b) => a.dueDate.getTime() - b.dueDate.getTime()
   )
 
@@ -213,9 +226,13 @@ export function BillsSummary({ bills, debtAccounts = [], recentTransactions = []
               else if (isOverdue) dueDateText = `${Math.abs(daysUntil)}d overdue`
 
               return (
-                <div key={payment.id} className={`flex items-center justify-between py-3 first:pt-0 last:pb-0 ${payment.isTransaction ? 'opacity-75' : ''}`}>
+                <div key={payment.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
                   <div className="flex items-center gap-3">
-                    {payment.isDebt ? (
+                    {payment.isTransaction ? (
+                      <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                        <Wallet className="w-4 h-4 text-gray-400" />
+                      </div>
+                    ) : payment.isDebt ? (
                       <AccountLogo
                         institution={payment.institution}
                         type={payment.type as 'credit' | 'credit_card' | 'loan'}
@@ -238,12 +255,11 @@ export function BillsSummary({ bills, debtAccounts = [], recentTransactions = []
                       <p className={`text-xs ${payment.isTransaction ? 'text-gray-400' : isOverdue ? 'text-red-500 font-medium' : isUrgent ? 'text-coral-500 font-medium' : 'text-gray-400'}`}>
                         {dueDateText}
                         {payment.isDebt && <span className="ml-1 text-gray-300">· Min payment</span>}
-                        {payment.isTransaction && <span className="ml-1 text-gray-300">· {payment.txnType === 'income' ? 'Income' : 'Spent'}</span>}
                       </p>
                     </div>
                   </div>
-                  <p className={`font-semibold ${payment.isTransaction && payment.txnType === 'income' ? 'text-sprout-600' : payment.isTransaction ? 'text-gray-500' : 'text-gray-900'}`}>
-                    {payment.isTransaction && payment.txnType !== 'income' ? '-' : ''}{formatCurrency(payment.amount)}
+                  <p className={`font-semibold ${payment.isTransaction ? 'text-coral-500' : 'text-gray-900'}`}>
+                    {payment.isTransaction ? '-' : ''}{formatCurrency(payment.amount)}
                   </p>
                 </div>
               )

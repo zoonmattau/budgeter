@@ -497,6 +497,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         accounts={accounts || []}
         incomeEntries={recurringIncome || []}
         bills={allBills || []}
+        transactions={typedTransactions.map(t => ({
+          id: t.id,
+          amount: Number(t.amount),
+          date: t.date,
+          type: t.type,
+          description: t.description,
+        }))}
       />
 
       {/* Credit Limit Warning */}
