@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2, TrendingUp } from 'lucide-react'
+import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2, TrendingUp, Landmark } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -15,6 +15,7 @@ interface QuickAddButtonProps {
   incomeCategories: Tables<'categories'>[]
   creditCards?: Tables<'accounts'>[]
   investmentAccounts?: Tables<'accounts'>[]
+  bankAccounts?: Tables<'accounts'>[]
 }
 
 type TransactionType = 'expense' | 'income' | 'subscription' | 'investment'
@@ -40,7 +41,7 @@ const RECURRING_SUGGESTIONS = [
   { name: 'Insurance', amount: 100, category: 'Insurance' },
 ]
 
-export function QuickAddButton({ expenseCategories, incomeCategories, creditCards = [], investmentAccounts = [] }: QuickAddButtonProps) {
+export function QuickAddButton({ expenseCategories, incomeCategories, creditCards = [], investmentAccounts = [], bankAccounts = [] }: QuickAddButtonProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [transactionType, setTransactionType] = useState<TransactionType>('expense')
@@ -51,6 +52,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [selectedInvestmentId, setSelectedInvestmentId] = useState<string | null>(null)
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
 
@@ -78,6 +80,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
     setTransactionType('expense')
     setSelectedCardId(null)
     setSelectedInvestmentId(null)
+    setSelectedBankAccountId(null)
     setIsRecurring(false)
     setFrequency('monthly')
     setShowRecurringSuggestions(false)
@@ -99,6 +102,8 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
     setSelectedCategory(null)
     setIncomePreset(null)
     setSelectedInvestmentId(null)
+    setSelectedBankAccountId(null)
+    setSelectedCardId(null)
     // Subscriptions and investments are always recurring
     setIsRecurring(type === 'subscription' || type === 'investment')
     if (type === 'subscription' || type === 'investment') {
@@ -171,11 +176,12 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
       type: (isInvestment || isSubscription) ? 'expense' : transactionType,
       description: description || selectedCategory?.name || incomePreset || 'Income',
       date: date,
-      account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : (isInvestment ? selectedInvestmentId : null),
+      account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : isInvestment ? selectedInvestmentId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
       is_recurring: isRecurring,
     })
 
-    // If expense or subscription was added to a credit card, update the card balance
+    // If expense or subscription was added to a credit card, increase card balance (debt increases)
+    // If expense or subscription was added to a bank account, decrease bank balance (money leaves)
     if (!error && (isExpense || isSubscription) && selectedCardId) {
       const card = creditCards.find(c => c.id === selectedCardId)
       if (card) {
@@ -186,6 +192,18 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             updated_at: new Date().toISOString(),
           })
           .eq('id', selectedCardId)
+      } else {
+        // Check if it's a bank account
+        const bank = bankAccounts.find(a => a.id === selectedCardId)
+        if (bank) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: bank.balance - parseFloat(amount),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', selectedCardId)
+        }
       }
     }
 
@@ -203,28 +221,53 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
       }
     }
 
-    // If recurring (subscription, expense, or investment), create a bill automatically
-    if (!error && isRecurring && (isExpense || isSubscription || isInvestment) && description) {
-      const dueDay = new Date(date).getDate()
-      const nextDue = new Date(date) // Use selected date as base
-      // If selected date is in the past, move to next occurrence
-      if (nextDue <= new Date()) {
-        nextDue.setMonth(nextDue.getMonth() + 1)
+    // If income was deposited to a bank account, increase the bank balance
+    if (!error && transactionType === 'income' && selectedBankAccountId) {
+      const bank = bankAccounts.find(a => a.id === selectedBankAccountId)
+      if (bank) {
+        await supabase
+          .from('accounts')
+          .update({
+            balance: bank.balance + parseFloat(amount),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', selectedBankAccountId)
       }
+    }
 
-      const { error: billError } = await supabase.from('bills').insert({
-        user_id: user.id,
-        category_id: categoryId || expenseCategories[0]?.id,
-        name: description,
-        amount: parseFloat(amount),
-        frequency: frequency,
-        due_day: dueDay,
-        next_due: nextDue.toISOString().split('T')[0],
-        is_active: true,
-      })
+    // If recurring (subscription, expense, or investment), create a bill automatically
+    // But only if a bill with the same name doesn't already exist
+    if (!error && isRecurring && (isExpense || isSubscription || isInvestment) && description) {
+      const { data: existingBill } = await supabase
+        .from('bills')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('name', description)
+        .eq('is_active', true)
+        .limit(1)
 
-      if (!billError) {
-        setBillCreated(true)
+      if (!existingBill || existingBill.length === 0) {
+        const dueDay = new Date(date).getDate()
+        const nextDue = new Date(date) // Use selected date as base
+        // If selected date is in the past, move to next occurrence
+        if (nextDue <= new Date()) {
+          nextDue.setMonth(nextDue.getMonth() + 1)
+        }
+
+        const { error: billError } = await supabase.from('bills').insert({
+          user_id: user.id,
+          category_id: categoryId || expenseCategories[0]?.id,
+          name: description,
+          amount: parseFloat(amount),
+          frequency: frequency,
+          due_day: dueDay,
+          next_due: nextDue.toISOString().split('T')[0],
+          is_active: true,
+        })
+
+        if (!billError) {
+          setBillCreated(true)
+        }
       }
     }
 
@@ -334,17 +377,6 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTypeChange('income')}
-                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
-                    transactionType === 'income'
-                      ? 'bg-white text-sprout-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Income
-                </button>
-                <button
-                  type="button"
                   onClick={() => handleTypeChange('subscription')}
                   className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
                     transactionType === 'subscription'
@@ -353,6 +385,17 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                   }`}
                 >
                   Recurring
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTypeChange('income')}
+                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                    transactionType === 'income'
+                      ? 'bg-white text-sprout-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Income
                 </button>
                 <button
                   type="button"
@@ -537,6 +580,46 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             </div>
           )}
 
+          {/* Deposit To - for income only */}
+          {transactionType === 'income' && bankAccounts.length > 0 && (
+            <div>
+              <label className="label">Deposit to (optional)</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedBankAccountId(null)}
+                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                    selectedBankAccountId === null
+                      ? 'bg-gray-200 text-gray-800'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
+                  }`}
+                >
+                  No account
+                </button>
+                {bankAccounts.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => setSelectedBankAccountId(account.id)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                      selectedBankAccountId === account.id
+                        ? 'bg-sprout-100 text-sprout-700'
+                        : 'bg-gray-100 text-gray-500 hover:bg-sprout-50'
+                    }`}
+                  >
+                    <Landmark className="w-3.5 h-3.5" />
+                    {account.name}
+                  </button>
+                ))}
+              </div>
+              {selectedBankAccountId && (
+                <p className="text-xs text-sprout-600 mt-1.5">
+                  This income will be added to your account balance
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Recurring Toggle - for expenses only (not subscriptions/investments, they're always recurring) */}
           {isExpense && (
             <div className="p-4 bg-gray-50 rounded-xl">
@@ -610,8 +693,8 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
             </div>
           )}
 
-          {/* Credit Card Selection - for expenses and subscriptions */}
-          {(isExpense || isSubscription) && creditCards.length > 0 && (
+          {/* Payment Method Selection - for expenses and subscriptions */}
+          {(isExpense || isSubscription) && (creditCards.length > 0 || bankAccounts.length > 0) && (
             <div>
               <label className="label">Pay With (optional)</label>
               <div className="flex flex-wrap gap-2">
@@ -626,6 +709,21 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                 >
                   Cash/Debit
                 </button>
+                {bankAccounts.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => setSelectedCardId(account.id)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                      selectedCardId === account.id
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gray-100 text-gray-500 hover:bg-blue-50'
+                    }`}
+                  >
+                    <Landmark className="w-3.5 h-3.5" />
+                    {account.name}
+                  </button>
+                ))}
                 {creditCards.map((card) => (
                   <button
                     key={card.id}
@@ -642,9 +740,14 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                   </button>
                 ))}
               </div>
-              {selectedCardId && (
+              {selectedCardId && creditCards.find(c => c.id === selectedCardId) && (
                 <p className="text-xs text-purple-600 mt-1.5">
                   This expense will be added to your credit card balance
+                </p>
+              )}
+              {selectedCardId && bankAccounts.find(a => a.id === selectedCardId) && (
+                <p className="text-xs text-blue-600 mt-1.5">
+                  This expense will be deducted from your account balance
                 </p>
               )}
             </div>

@@ -42,6 +42,7 @@ interface DebtPlannerClientProps {
   savingsAllocations?: number
   budgetItems?: BudgetItem[]
   minimumDebtPayments: number
+  monthlyInterest: number
   totalPaidOff: number
   progressPercent: number
   savingsGoals?: SavingsGoal[]
@@ -50,12 +51,13 @@ interface DebtPlannerClientProps {
 export function DebtPlannerClient({
   debts,
   monthlyIncome,
-  monthlyBills: _monthlyBills,
+  monthlyBills,
   budgetAllocations,
   expenseAllocations = 0,
   savingsAllocations = 0,
   budgetItems = [],
   minimumDebtPayments,
+  monthlyInterest,
   totalPaidOff,
   progressPercent,
   savingsGoals = [],
@@ -207,6 +209,8 @@ export function DebtPlannerClient({
       {/* Income Breakdown & Slider */}
       <IncomeBreakdown
         monthlyIncome={monthlyIncome}
+        monthlyBills={monthlyBills}
+        monthlyInterest={monthlyInterest}
         budgetItems={budgetItems}
         expenseAllocations={expenseAllocations}
         savingsAllocations={savingsAllocations}

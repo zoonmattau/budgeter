@@ -250,6 +250,36 @@ export interface Database {
         }
         Relationships: []
       }
+      budget_settings: {
+        Row: {
+          id: string
+          user_id: string
+          household_id: string | null
+          month: string
+          extra_debt_payment: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          household_id?: string | null
+          month: string
+          extra_debt_payment?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          household_id?: string | null
+          month?: string
+          extra_debt_payment?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       income_entries: {
         Row: {
           id: string

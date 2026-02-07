@@ -88,6 +88,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
     { data: debtAccounts },
     { data: savingsGoals },
     { data: bankAccounts },
+    { data: budgetSettings },
   ] = await Promise.all([
     supabase
       .from('categories')
@@ -132,18 +133,32 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .eq('type', 'expense')
           .gte('date', currentMonth)
           .lte('date', format(new Date(), 'yyyy-MM-dd')),
-    supabase
-      .from('bills')
-      .select('id, name, amount, frequency, next_due, category_id, is_active, is_one_off, saved_amount')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .order('next_due'),
-    supabase
-      .from('accounts')
-      .select('id, name, type, balance, minimum_payment, payment_frequency')
-      .eq('user_id', user.id)
-      .in('type', ['credit', 'credit_card', 'debt', 'loan'])
-      .gt('balance', 0),
+    scope === 'household' && householdId
+      ? supabase
+          .from('bills')
+          .select('id, name, amount, frequency, next_due, category_id, is_active, is_one_off, saved_amount')
+          .eq('household_id', householdId)
+          .eq('is_active', true)
+          .order('next_due')
+      : supabase
+          .from('bills')
+          .select('id, name, amount, frequency, next_due, category_id, is_active, is_one_off, saved_amount')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('next_due'),
+    scope === 'household' && householdId
+      ? supabase
+          .from('accounts')
+          .select('id, name, type, balance, minimum_payment, payment_frequency')
+          .eq('household_id', householdId)
+          .in('type', ['credit', 'credit_card', 'debt', 'loan'])
+          .gt('balance', 0)
+      : supabase
+          .from('accounts')
+          .select('id, name, type, balance, minimum_payment, payment_frequency')
+          .eq('user_id', user.id)
+          .in('type', ['credit', 'credit_card', 'debt', 'loan'])
+          .gt('balance', 0),
     // Savings goals (non-debt payoff goals)
     supabase
       .from('goals')
@@ -158,6 +173,21 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       .select('id, name, type, balance')
       .eq('user_id', user.id)
       .in('type', ['bank', 'cash']),
+    // Budget settings (extra debt payment, etc.)
+    scope === 'household' && householdId
+      ? supabase
+          .from('budget_settings')
+          .select('*')
+          .eq('household_id', householdId)
+          .eq('month', currentMonth)
+          .maybeSingle()
+      : supabase
+          .from('budget_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('month', currentMonth)
+          .is('household_id', null)
+          .maybeSingle(),
   ])
 
   // Filter out Interest and Other categories, then sort with rent/mortgage at the top
@@ -255,6 +285,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
         userContributionFrequency={userContributionFrequency}
         savingsGoals={savingsGoals || []}
         bankAccounts={bankAccounts || []}
+        savedExtraDebtPayment={Number(budgetSettings?.extra_debt_payment) || 0}
       />
     </div>
   )

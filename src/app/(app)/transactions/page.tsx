@@ -229,13 +229,14 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         transactions={typedTransactions}
         categories={[...(expenseCategories || []), ...(incomeCategories || [])]}
         creditCards={accounts || []}
+        bankAccounts={(allAccounts || []).filter(a => a.type === 'bank' || a.type === 'cash')}
         showMemberBadge={scope === 'household'}
         members={members}
         currentUserId={user.id}
         memberBreakdown={memberBreakdown}
       />
 
-      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={accounts || []} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={accounts || []} bankAccounts={(allAccounts || []).filter(a => a.type === 'bank' || a.type === 'cash')} />
     </div>
   )
 }

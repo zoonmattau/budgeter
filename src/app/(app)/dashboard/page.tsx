@@ -2,8 +2,6 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { BudgetOverview } from '@/components/dashboard/budget-overview'
 import { BillsSummary } from '@/components/dashboard/bills-summary'
-import { GoalsList } from '@/components/dashboard/goals-list'
-import { UpcomingBills } from '@/components/dashboard/upcoming-bills'
 import { DebtRepayments } from '@/components/dashboard/debt-repayments'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
@@ -91,6 +89,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     { data: predictions },
     { data: recurringIncome },
     { data: allBills },
+    { data: budgetSettings },
   ] = await Promise.all([
     // Income entries - scope aware
     scope === 'household' && householdId
@@ -234,10 +233,45 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .select('*')
       .eq('user_id', user.id)
       .eq('is_active', true),
+
+    // Budget settings (extra debt payment, etc.)
+    scope === 'household' && householdId
+      ? supabase
+          .from('budget_settings')
+          .select('*')
+          .eq('household_id', householdId)
+          .eq('month', currentMonth)
+          .maybeSingle()
+      : supabase
+          .from('budget_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('month', currentMonth)
+          .is('household_id', null)
+          .maybeSingle(),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
-  const totalAllocated = budgets?.reduce((sum, b) => sum + Number(b.allocated), 0) || 0
+  const categoryAllocated = budgets?.reduce((sum, b) => sum + Number(b.allocated), 0) || 0
+
+  // Calculate fixed costs to match budget builder
+  const frequencyToMonthly: Record<string, number> = {
+    weekly: 4.33, fortnightly: 2.17, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12,
+  }
+  const debtAccounts = accounts?.filter(a =>
+    (a.type === 'credit' || a.type === 'credit_card' || a.type === 'debt' || a.type === 'loan') && a.balance > 0
+  ) || []
+  const monthlyDebtPayments = debtAccounts.reduce((total, a) => {
+    if (!a.minimum_payment) return total
+    const multiplier = frequencyToMonthly[a.payment_frequency || 'monthly'] || 1
+    return total + (Number(a.minimum_payment) * multiplier)
+  }, 0)
+  const monthlySinkingFunds = (allBills || [])
+    .filter(b => b.is_active && !b.is_one_off && (b.frequency === 'quarterly' || b.frequency === 'yearly'))
+    .reduce((sum, b) => sum + Number(b.amount) / (b.frequency === 'yearly' ? 12 : 3), 0)
+  const extraDebtPayment = Number(budgetSettings?.extra_debt_payment) || 0
+
+  const totalAllocated = categoryAllocated + monthlyDebtPayments + monthlySinkingFunds + extraDebtPayment
   const totalSpent = transactions
     ?.filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + Number(t.amount), 0) || 0
@@ -270,6 +304,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // Get investment accounts for investment contributions
   const investmentAccounts = accounts?.filter(a => a.type === 'investment') || []
+
+  // Get bank accounts for income deposits and expense payments
+  const bankAccounts = accounts?.filter(a => a.type === 'bank' || a.type === 'cash') || []
 
   // Create/update net worth snapshot if user has accounts (personal only)
   if (scope === 'personal' && accounts && accounts.length > 0) {
@@ -325,9 +362,38 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const typedTransactions = (transactions || []) as (typeof transactions extends (infer T)[] | null ? T & { profiles?: { display_name: string | null } | null } : never)[]
 
   // Calculate daily spending stats for insights teaser
+  // Discretionary budget excludes fixed costs (rent, bills, housing, insurance)
+  const fixedCostKeywords = ['rent', 'mortgage', 'housing', 'home loan', 'bills', 'utilities', 'electricity', 'gas', 'water', 'internet', 'phone', 'insurance']
+  const discretionaryBudgets = budgets?.filter(b => {
+    const name = (b.categories?.name || '').toLowerCase()
+    return !fixedCostKeywords.some(k => name.includes(k))
+  }) || []
+  const discretionaryAllocated = discretionaryBudgets.reduce((sum, b) => sum + Number(b.allocated), 0)
+  const fixedCategoryIds = new Set(
+    budgets?.filter(b => {
+      const name = (b.categories?.name || '').toLowerCase()
+      return fixedCostKeywords.some(k => name.includes(k))
+    }).map(b => b.category_id) || []
+  )
+  const discretionarySpent = transactions
+    ?.filter(t => t.type === 'expense' && !fixedCategoryIds.has(t.category_id))
+    .reduce((sum, t) => sum + Number(t.amount), 0) || 0
+
+  // Build fixed costs breakdown for tooltip
+  const fixedCostItems: { name: string; amount: number }[] = []
+  budgets?.filter(b => {
+    const name = (b.categories?.name || '').toLowerCase()
+    return fixedCostKeywords.some(k => name.includes(k))
+  }).forEach(b => {
+    fixedCostItems.push({ name: b.categories?.name || 'Unknown', amount: Number(b.allocated) })
+  })
+  const totalDebtPayments = monthlyDebtPayments + extraDebtPayment
+  if (totalDebtPayments > 0) fixedCostItems.push({ name: 'Debt repayments', amount: Math.round(totalDebtPayments) })
+  if (monthlySinkingFunds > 0) fixedCostItems.push({ name: 'Sinking funds', amount: Math.round(monthlySinkingFunds) })
+
   const daysInMonth = new Date().getDate()
-  const dailyAverage = daysInMonth > 0 ? totalSpent / daysInMonth : 0
-  const dailyTarget = totalAllocated / 30
+  const dailyAverage = daysInMonth > 0 ? discretionarySpent / daysInMonth : 0
+  const dailyTarget = discretionaryAllocated / 30
 
   // Find top spending category
   const spendingByCategory = new Map<string, { name: string; amount: number; color: string }>()
@@ -362,16 +428,69 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         totalIncome={totalIncome}
         totalAllocated={totalAllocated}
         totalSpent={totalSpent}
+        discretionaryAllocated={discretionaryAllocated}
+        discretionarySpent={discretionarySpent}
+        fixedCostItems={fixedCostItems}
         scope={scope}
         memberBreakdown={memberBreakdown}
       />
 
-      {/* Net Worth Card */}
-      <NetWorthCard
-        netWorth={netWorth}
-        totalAssets={totalAssets}
-        totalLiabilities={totalLiabilities}
-      />
+      {/* Net Worth & Goals Row */}
+      <div className="grid grid-cols-2 gap-3">
+        <NetWorthCard
+          netWorth={netWorth}
+          totalAssets={totalAssets}
+          totalLiabilities={totalLiabilities}
+        />
+        <Link
+          href={`/goals${(goals || []).length === 0 ? '/new' : ''}`}
+          className={`card-hover block p-4 ${
+            (goals || []).length > 0
+              ? 'bg-gradient-to-br from-bloom-50 to-lavender-50'
+              : 'bg-gradient-to-br from-bloom-50 to-sprout-50'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-gray-600">Goals</p>
+            {(goals || []).length > 0 && (
+              <span className="text-xs text-gray-400">{(goals || []).length} active</span>
+            )}
+          </div>
+          {(goals || []).length > 0 ? (
+            <div className="space-y-2">
+              {(goals || []).slice(0, 2).map((goal) => {
+                const progress = goal.target_amount > 0
+                  ? (goal.current_amount / goal.target_amount) * 100
+                  : 0
+                return (
+                  <div key={goal.id}>
+                    <p className="text-xs text-gray-700 truncate">{goal.name}</p>
+                    <div className="h-1.5 bg-gray-200 rounded-full mt-1 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          goal.goal_type === 'debt_payoff'
+                            ? 'bg-gradient-to-r from-red-400 to-red-500'
+                            : 'bg-gradient-to-r from-sprout-400 to-sprout-500'
+                        }`}
+                        style={{ width: `${Math.min(progress, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+              {(goals || []).length > 2 && (
+                <p className="text-[10px] text-gray-400">+{(goals || []).length - 2} more</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center mt-1">
+              <span className="text-2xl mb-1">🌱</span>
+              <p className="text-xs font-medium text-bloom-600">Start a goal</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Save for what matters</p>
+            </div>
+          )}
+        </Link>
+      </div>
 
       {/* Cash Flow Preview */}
       <CashflowPreview
@@ -383,13 +502,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       {/* Credit Limit Warning */}
       <CreditLimitWarning creditCards={creditCards} />
 
-      {/* Insights Teaser with Donut Chart */}
+      {/* Insights Teaser Carousel */}
       <InsightsTeaser
         totalSpent={totalSpent}
+        totalAllocated={totalAllocated}
+        totalIncome={totalIncome}
         dailyAverage={dailyAverage}
         dailyTarget={dailyTarget}
+        discretionaryAllocated={discretionaryAllocated}
+        discretionarySpent={discretionarySpent}
         topCategory={topCategory}
         transactions={typedTransactions}
+        daysInMonth={daysInMonth}
       />
 
       {/* Activity Feed - only shown in household view */}
@@ -404,19 +528,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </section>
       )}
 
-      {/* Goals Progress */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-display font-semibold text-gray-900">
-            {scope === 'household' ? 'Household Goals' : 'Your Goals'}
-          </h2>
-          <Link href="/goals" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
-            See all
-          </Link>
-        </div>
-        <GoalsList goals={goals || []} />
-      </section>
-
       {/* Smart Predictions */}
       <SmartPredictions
         predictions={predictions || []}
@@ -424,31 +535,29 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       />
 
       {/* Bills & Subscriptions Summary */}
-      <BillsSummary bills={bills || []} />
-
-      {/* Upcoming Bills */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-display font-semibold text-gray-900">Upcoming Bills</h2>
-          <Link href="/bills" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
-            See all
-          </Link>
-        </div>
-        <UpcomingBills
-          bills={bills || []}
-          debtAccounts={accounts?.filter(a =>
-            (a.type === 'credit' || a.type === 'credit_card' || a.type === 'loan' || a.type === 'debt') &&
-            a.balance > 0 &&
-            a.due_date &&
-            a.minimum_payment
-          ) || []}
-        />
-      </section>
+      <BillsSummary
+        bills={bills || []}
+        debtAccounts={accounts?.filter(a =>
+          (a.type === 'credit' || a.type === 'credit_card' || a.type === 'loan' || a.type === 'debt') &&
+          a.balance > 0 &&
+          a.due_date &&
+          a.minimum_payment
+        ) || []}
+        recentTransactions={typedTransactions.slice(0, 10).map(t => ({
+          id: t.id,
+          description: t.description,
+          amount: Number(t.amount),
+          date: t.date,
+          type: t.type as 'expense' | 'income' | 'investment',
+          categories: t.categories,
+        }))}
+      />
 
       {/* Debt Repayments */}
       <DebtRepayments
         accounts={accounts || []}
         availableFunds={Math.max(0, totalIncome - totalAllocated)}
+        extraDebtPayment={extraDebtPayment}
       />
 
       {/* Recent Transactions */}
@@ -463,6 +572,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           transactions={typedTransactions.slice(0, 5)}
           categories={[...(expenseCategories || []), ...(incomeCategories || [])]}
           creditCards={creditCards}
+          bankAccounts={bankAccounts}
           showMemberBadge={scope === 'household'}
           members={members}
           currentUserId={user.id}
@@ -470,7 +580,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       </section>
 
       {/* Quick Add FAB */}
-      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={creditCards} investmentAccounts={investmentAccounts} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={creditCards} investmentAccounts={investmentAccounts} bankAccounts={bankAccounts} />
     </div>
   )
 }

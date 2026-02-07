@@ -80,8 +80,14 @@ export default async function DebtPlannerPage() {
     return total + Number(entry.amount)
   }, 0)
 
-  // Calculate monthly bills (only recurring)
-  const monthlyBills = (bills || []).reduce((total, bill) => {
+  // Exclude rent/mortgage from bills since they're already shown via budget categories
+  const rentKeywords = ['rent', 'mortgage', 'housing', 'home loan']
+  const nonRentBills = (bills || []).filter(bill =>
+    !rentKeywords.some(k => bill.name.toLowerCase().includes(k))
+  )
+
+  // Calculate monthly bills (only recurring, excluding rent/mortgage)
+  const monthlyBills = nonRentBills.reduce((total, bill) => {
     let monthlyAmount = Number(bill.amount)
     switch (bill.frequency) {
       case 'weekly':
@@ -136,6 +142,11 @@ export default async function DebtPlannerPage() {
   // Calculate minimum debt payments
   const minimumDebtPayments = debts.reduce((total, debt) => total + debt.minimumPayment, 0)
 
+  // Calculate monthly interest charges across all debts
+  const monthlyInterest = debts.reduce((total, debt) => {
+    return total + (debt.balance * debt.interestRate / 100 / 12)
+  }, 0)
+
   // No debts state
   if (debts.length === 0) {
     return (
@@ -185,6 +196,7 @@ export default async function DebtPlannerPage() {
       savingsAllocations={Math.round(savingsAllocations)}
       budgetItems={budgetItems}
       minimumDebtPayments={Math.round(minimumDebtPayments)}
+      monthlyInterest={Math.round(monthlyInterest)}
       totalPaidOff={Math.round(totalPaidOff)}
       progressPercent={Math.round(progressPercent)}
       savingsGoals={savingsGoals}

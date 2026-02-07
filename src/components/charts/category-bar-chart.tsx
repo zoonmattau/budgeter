@@ -1,90 +1,81 @@
 'use client'
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Cell,
-} from 'recharts'
-import { ChartWrapper } from './chart-wrapper'
 import { formatCurrency } from '@/lib/utils'
 
 interface CategoryBarChartProps {
-  data: { name: string; spent: number; budgeted: number; color: string }[]
+  data: { name: string; categoryId?: string; spent: number; budgeted: number; color: string }[]
   height?: number
+  onCategoryClick?: (categoryName: string) => void
+  selectedCategory?: string | null
 }
 
-export function CategoryBarChart({ data, height = 300 }: CategoryBarChartProps) {
+export function CategoryBarChart({ data, onCategoryClick, selectedCategory }: CategoryBarChartProps) {
   if (data.length === 0) {
     return (
-      <div
-        className="flex items-center justify-center bg-gray-50 rounded-xl"
-        style={{ height }}
-      >
+      <div className="flex items-center justify-center bg-gray-50 rounded-xl py-8">
         <p className="text-gray-400 text-sm">No budget data</p>
       </div>
     )
   }
 
-  // Convert to percentage of budget (100% = on budget)
-  const chartData = data.map(d => ({
-    ...d,
-    percent: d.budgeted > 0 ? (d.spent / d.budgeted) * 100 : 0,
-  }))
-
   return (
-    <ChartWrapper height={height}>
-      <BarChart
-        data={chartData}
-        layout="vertical"
-        margin={{ top: 5, right: 50, left: 10, bottom: 5 }}
-      >
-        <XAxis
-          type="number"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 11, fill: '#9ca3af' }}
-          tickFormatter={(value) => `${Math.round(value)}%`}
-          domain={[0, (dataMax: number) => Math.max(100, dataMax * 1.1)]}
-          ticks={[0, 25, 50, 75, 100]}
-        />
+    <div className="space-y-3">
+      {data.map((item) => {
+        const percent = item.budgeted > 0 ? (item.spent / item.budgeted) * 100 : 0
+        const isOver = percent > 100
+        const isWarning = percent > 80 && !isOver
+        const barColor = isOver ? '#ef4444' : isWarning ? '#f59e0b' : item.color
+        const isSelected = selectedCategory === item.name
 
-        <YAxis
-          type="category"
-          dataKey="name"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 12, fill: '#374151' }}
-          width={80}
-        />
+        return (
+          <button
+            key={item.name}
+            onClick={() => onCategoryClick?.(item.name)}
+            className={`w-full text-left p-3 rounded-xl transition-colors ${
+              isSelected ? 'bg-gray-100 ring-1 ring-gray-300' : 'hover:bg-gray-50'
+            }`}
+          >
+            {/* Category name and amounts */}
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                <span className="text-sm font-medium text-gray-900 truncate">{item.name}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                <span className={`text-sm font-semibold ${isOver ? 'text-red-500' : 'text-gray-900'}`}>
+                  {formatCurrency(item.spent)}
+                </span>
+                <span className="text-xs text-gray-400">/ {formatCurrency(item.budgeted)}</span>
+              </div>
+            </div>
 
-        <Tooltip
-          formatter={(value, name, props) => {
-            const item = props.payload
-            return [
-              `${formatCurrency(item.spent)} of ${formatCurrency(item.budgeted)} (${Math.round(Number(value))}%)`,
-              'Spent',
-            ]
-          }}
-          contentStyle={{
-            borderRadius: '12px',
-            border: 'none',
-            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-            padding: '8px 12px',
-          }}
-        />
+            {/* Progress bar */}
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(percent, 100)}%`,
+                  backgroundColor: barColor,
+                }}
+              />
+            </div>
 
-        <Bar dataKey="percent" radius={[0, 6, 6, 0]} barSize={24}>
-          {chartData.map((entry, index) => (
-            <Cell
-              key={`cell-${index}`}
-              fill={entry.percent > 100 ? '#ef4444' : entry.percent > 80 ? '#f59e0b' : entry.color}
-            />
-          ))}
-        </Bar>
-      </BarChart>
-    </ChartWrapper>
+            {/* Percentage label */}
+            <div className="flex justify-between mt-1">
+              <span className={`text-xs ${isOver ? 'text-red-500 font-medium' : isWarning ? 'text-amber-500' : 'text-gray-400'}`}>
+                {item.spent === 0 && item.budgeted > 0
+                  ? 'No spending yet'
+                  : `${Math.round(percent)}% used`}
+              </span>
+              {isOver && (
+                <span className="text-xs text-red-500 font-medium">
+                  {formatCurrency(item.spent - item.budgeted)} over
+                </span>
+              )}
+            </div>
+          </button>
+        )
+      })}
+    </div>
   )
 }

@@ -1,16 +1,24 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Wallet } from 'lucide-react'
+import { ArrowRight, Wallet, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { MemberBreakdown, MemberSpending } from '@/components/ui/member-breakdown'
-import { InfoTooltip } from '@/components/ui/tooltip'
 import type { ViewScope } from '@/lib/scope-context'
+
+interface FixedCostItem {
+  name: string
+  amount: number
+}
 
 interface BudgetOverviewProps {
   totalIncome: number
   totalAllocated: number
   totalSpent: number
+  discretionaryAllocated?: number
+  discretionarySpent?: number
+  fixedCostItems?: FixedCostItem[]
   scope?: ViewScope
   memberBreakdown?: MemberSpending[]
 }
@@ -19,12 +27,20 @@ export function BudgetOverview({
   totalIncome,
   totalAllocated,
   totalSpent,
+  discretionaryAllocated,
+  discretionarySpent,
+  fixedCostItems = [],
   scope = 'personal',
   memberBreakdown = [],
 }: BudgetOverviewProps) {
+  const [showFixedCosts, setShowFixedCosts] = useState(false)
+
   const unallocated = totalIncome - totalAllocated
-  const remaining = totalAllocated - totalSpent
-  const spentPercentage = totalAllocated > 0 ? (totalSpent / totalAllocated) * 100 : 0
+  // Use discretionary amounts for "left to spend" if available
+  const spendableAllocated = discretionaryAllocated ?? totalAllocated
+  const spendableSpent = discretionarySpent ?? totalSpent
+  const remaining = spendableAllocated - spendableSpent
+  const spentPercentage = spendableAllocated > 0 ? (spendableSpent / spendableAllocated) * 100 : 0
 
   const isOverBudget = remaining < 0
   const needsSetup = totalAllocated === 0 && totalIncome > 0
@@ -90,66 +106,109 @@ export function BudgetOverview({
 
   // Normal budget view when set up
   const isUnderAllocated = unallocated > 0
+  const fixedCosts = totalAllocated - spendableAllocated
 
   return (
-    <Link href="/budget" className="block card bg-gradient-to-br from-bloom-500 to-bloom-600 text-white hover:from-bloom-600 hover:to-bloom-700 transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <p className="text-bloom-100 text-sm font-medium">
-            {isHousehold ? 'Household Budget' : 'Monthly Budget'}
-          </p>
-          <p className="text-3xl font-bold mt-1">{formatCurrency(totalAllocated)}</p>
-        </div>
-        {isUnderAllocated && (
-          <div className="bg-white/20 rounded-lg px-2 py-1">
-            <p className="text-xs font-medium">{formatCurrency(unallocated)} unallocated</p>
+    <div className="relative">
+      <Link href="/budget" className="block card bg-gradient-to-br from-bloom-500 to-bloom-600 text-white hover:from-bloom-600 hover:to-bloom-700 transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="text-bloom-100 text-sm font-medium">
+              {isHousehold ? 'Household Spending Budget' : 'Spending Budget'}
+            </p>
+            <p className="text-3xl font-bold mt-1">{formatCurrency(spendableAllocated)}</p>
           </div>
-        )}
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-3 bg-white/20 rounded-full overflow-hidden mb-3">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${
-            isOverBudget ? 'bg-coral-400' : 'bg-white'
-          }`}
-          style={{ width: `${Math.min(spentPercentage, 100)}%` }}
-        />
-      </div>
-
-      <div className="flex items-center justify-between text-sm">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <p className="text-bloom-100">Spent</p>
-            <InfoTooltip text="Total expenses this month across all categories" />
+          <div className="text-right space-y-1">
+            {fixedCosts > 0 && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setShowFixedCosts(!showFixedCosts)
+                }}
+                className="bg-white/15 hover:bg-white/25 rounded-lg px-2 py-1 transition-colors"
+              >
+                <p className="text-[11px] font-medium">{formatCurrency(fixedCosts)} fixed costs</p>
+              </button>
+            )}
+            {isUnderAllocated && (
+              <div className="bg-white/15 rounded-lg px-2 py-1">
+                <p className="text-[11px] font-medium">{formatCurrency(unallocated)} unallocated</p>
+              </div>
+            )}
           </div>
-          <p className="font-semibold">{formatCurrency(totalSpent)}</p>
         </div>
-        <div className="text-right">
-          <div className="flex items-center justify-end gap-1.5">
-            <p className="text-bloom-100">Remaining</p>
-            <InfoTooltip text="Amount left to spend before hitting your budget limit" />
-          </div>
-          <p className={`font-semibold ${isOverBudget ? 'text-coral-300' : ''}`}>
-            {formatCurrency(Math.abs(remaining))}
-            {isOverBudget && ' over'}
-          </p>
-        </div>
-      </div>
 
-      {/* Member breakdown for household view */}
-      {isHousehold && memberBreakdown.length > 0 && totalSpent > 0 && (
-        <div className="mt-4 pt-4 border-t border-white/20">
-          <p className="text-bloom-100 text-xs mb-2">Spending by member</p>
-          <MemberBreakdown
-            breakdown={memberBreakdown}
-            total={totalSpent}
-            showLegend={true}
-            showAmounts={true}
-            className="text-white [&_span]:text-white/90 [&_.text-gray-700]:text-white [&_.text-gray-500]:text-white/70"
+        {/* Progress bar */}
+        <div className="h-3 bg-white/20 rounded-full overflow-hidden mb-3">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              isOverBudget ? 'bg-coral-400' : 'bg-white'
+            }`}
+            style={{ width: `${Math.min(spentPercentage, 100)}%` }}
           />
         </div>
-      )}
-    </Link>
+
+        <div className="flex items-center justify-between text-sm">
+          <div>
+            <p className="text-bloom-100">Spent</p>
+            <p className="font-semibold">{formatCurrency(spendableSpent)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-bloom-100">Left to spend</p>
+            <p className={`font-semibold ${isOverBudget ? 'text-coral-300' : ''}`}>
+              {formatCurrency(Math.abs(remaining))}
+              {isOverBudget && ' over'}
+            </p>
+          </div>
+        </div>
+
+        {/* Member breakdown for household view */}
+        {isHousehold && memberBreakdown.length > 0 && totalSpent > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/20">
+            <p className="text-bloom-100 text-xs mb-2">Spending by member</p>
+            <MemberBreakdown
+              breakdown={memberBreakdown}
+              total={totalSpent}
+              showLegend={true}
+              showAmounts={true}
+              className="text-white [&_span]:text-white/90 [&_.text-gray-700]:text-white [&_.text-gray-500]:text-white/70"
+            />
+          </div>
+        )}
+          {/* Fixed costs inline breakdown */}
+        {showFixedCosts && fixedCostItems.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-white/20 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-bloom-100 text-xs font-medium">Fixed cost breakdown</p>
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setShowFixedCosts(false)
+                }}
+                className="p-0.5 rounded hover:bg-white/15 transition-colors"
+              >
+                <X className="w-3.5 h-3.5 text-bloom-200" />
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {fixedCostItems
+                .sort((a, b) => b.amount - a.amount)
+                .map((item, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <span className="text-sm text-white/80">{item.name}</span>
+                    <span className="text-sm font-medium text-white">{formatCurrency(item.amount)}</span>
+                  </div>
+                ))}
+            </div>
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/20">
+              <span className="text-xs font-medium text-bloom-100">Total fixed</span>
+              <span className="text-sm font-bold text-white">{formatCurrency(fixedCosts)}</span>
+            </div>
+          </div>
+        )}
+      </Link>
+    </div>
   )
 }

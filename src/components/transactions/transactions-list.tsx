@@ -20,6 +20,7 @@ interface TransactionsListProps {
   transactions: TransactionWithCategory[]
   categories?: Tables<'categories'>[]
   creditCards?: Tables<'accounts'>[]
+  bankAccounts?: Tables<'accounts'>[]
   showMemberBadge?: boolean
   members?: HouseholdMember[]
   currentUserId?: string
@@ -30,6 +31,7 @@ export function TransactionsList({
   transactions,
   categories = [],
   creditCards = [],
+  bankAccounts = [],
   showMemberBadge = false,
   members = [],
   currentUserId,
@@ -185,6 +187,7 @@ export function TransactionsList({
           transaction={selectedTransaction}
           categories={categories.filter(c => c.type === selectedTransaction.type)}
           creditCards={creditCards}
+          bankAccounts={bankAccounts}
           onClose={() => setSelectedTransaction(null)}
         />
       )}

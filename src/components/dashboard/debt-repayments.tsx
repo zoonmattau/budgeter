@@ -20,6 +20,7 @@ interface DebtAccount {
 interface DebtRepaymentsProps {
   accounts: DebtAccount[]
   availableFunds: number
+  extraDebtPayment?: number
 }
 
 interface PaymentSuggestion {
@@ -31,7 +32,7 @@ interface PaymentSuggestion {
   daysUntilDue: number | null
 }
 
-export function DebtRepayments({ accounts, availableFunds }: DebtRepaymentsProps) {
+export function DebtRepayments({ accounts, availableFunds, extraDebtPayment = 0 }: DebtRepaymentsProps) {
   // Filter to only debt accounts (credit cards and loans)
   const debtAccounts = accounts.filter(a =>
     (a.type === 'credit' || a.type === 'credit_card' || a.type === 'loan' || a.type === 'debt') &&
@@ -42,8 +43,8 @@ export function DebtRepayments({ accounts, availableFunds }: DebtRepaymentsProps
     return null // Don't show section if no debts
   }
 
-  // Calculate payment suggestions
-  const suggestions = calculatePaymentSuggestions(debtAccounts, availableFunds)
+  // Calculate payment suggestions, including user's allocated extra payment
+  const suggestions = calculatePaymentSuggestions(debtAccounts, availableFunds, extraDebtPayment)
   const totalSuggested = suggestions.reduce((sum, s) => sum + s.suggestedAmount, 0)
   const totalMinimum = suggestions.reduce((sum, s) => sum + s.minimumAmount, 0)
 
@@ -146,7 +147,8 @@ export function DebtRepayments({ accounts, availableFunds }: DebtRepaymentsProps
 
 function calculatePaymentSuggestions(
   accounts: DebtAccount[],
-  availableFunds: number
+  availableFunds: number,
+  extraDebtPayment: number = 0
 ): PaymentSuggestion[] {
   const today = new Date()
   const currentDay = today.getDate()
@@ -174,6 +176,8 @@ function calculatePaymentSuggestions(
     return a.balance - b.balance
   })
 
+  // Distribute the user's allocated extra debt payment to the highest-priority debt first
+  let remainingExtra = extraDebtPayment
   let remainingFunds = availableFunds
   const suggestions: PaymentSuggestion[] = []
 
@@ -189,31 +193,35 @@ function calculatePaymentSuggestions(
       priority = 'medium'
     }
 
-    // Calculate suggested amount
+    // Start with minimum payment
     let suggestedAmount = minimumPayment
     let reason = ''
 
-    // If there's available funds beyond minimum
-    if (remainingFunds > minimumPayment) {
+    // Apply user's allocated extra debt payment to this debt (highest priority first)
+    if (remainingExtra > 0) {
+      const extraForThis = Math.min(remainingExtra, account.balance - suggestedAmount)
+      if (extraForThis > 0) {
+        suggestedAmount += extraForThis
+        remainingExtra -= extraForThis
+        reason = `Includes ${formatCurrency(extraForThis)} extra from your debt plan`
+      }
+    }
+
+    // If there's still unallocated available funds beyond what's already suggested
+    if (suggestedAmount <= minimumPayment && remainingFunds > minimumPayment) {
       const interestRate = account.interest_rate || 0
 
       if (interestRate >= 20) {
-        // High interest - suggest paying as much as possible
-        const extraPayment = Math.min(remainingFunds - minimumPayment, account.balance - minimumPayment)
-        suggestedAmount = minimumPayment + extraPayment * 0.5 // Suggest 50% of available
-        reason = `High interest (${interestRate}%) - paying extra saves money on interest`
+        const extraPayment = Math.min(remainingFunds - minimumPayment, account.balance - suggestedAmount)
+        suggestedAmount = Math.max(suggestedAmount, minimumPayment + extraPayment * 0.5)
+        if (!reason) reason = `High interest (${interestRate}%) - paying extra saves money on interest`
       } else if (interestRate >= 15) {
-        // Medium-high interest
-        const extraPayment = Math.min(remainingFunds - minimumPayment, account.balance - minimumPayment)
-        suggestedAmount = minimumPayment + extraPayment * 0.3
-        reason = `Consider paying extra to reduce ${interestRate}% interest charges`
+        const extraPayment = Math.min(remainingFunds - minimumPayment, account.balance - suggestedAmount)
+        suggestedAmount = Math.max(suggestedAmount, minimumPayment + extraPayment * 0.3)
+        if (!reason) reason = `Consider paying extra to reduce ${interestRate}% interest charges`
       } else if (account.balance < 500 && remainingFunds >= account.balance) {
-        // Small balance - suggest paying it off
-        suggestedAmount = account.balance
-        reason = 'Small balance - pay it off for a quick win!'
-      } else if (minimumPayment > 0) {
-        // Just suggest minimum
-        suggestedAmount = minimumPayment
+        suggestedAmount = Math.max(suggestedAmount, account.balance)
+        if (!reason) reason = 'Small balance - pay it off for a quick win!'
       }
     }
 

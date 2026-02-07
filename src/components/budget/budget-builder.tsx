@@ -90,6 +90,7 @@ interface BudgetBuilderProps {
   userContributionFrequency?: string
   savingsGoals?: SavingsGoal[]
   bankAccounts?: BankAccount[]
+  savedExtraDebtPayment?: number
 }
 
 export function BudgetBuilder({
@@ -113,6 +114,7 @@ export function BudgetBuilder({
   userContributionFrequency = 'monthly',
   savingsGoals = [],
   bankAccounts: _bankAccounts = [],
+  savedExtraDebtPayment = 0,
 }: BudgetBuilderProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -127,7 +129,6 @@ export function BudgetBuilder({
   // Show wizard for first-time users
   const [showWizard, setShowWizard] = useState(hasNoBudget && totalIncome > 0 && categories.length > 0)
 
-  // Calculate monthly cost of recurring bills per category (exclude one-off)
   const frequencyToMonthly: Record<string, number> = {
     weekly: 4.33,
     fortnightly: 2.17,
@@ -135,15 +136,6 @@ export function BudgetBuilder({
     quarterly: 1 / 3,
     yearly: 1 / 12,
   }
-
-  const billsCostByCategory = bills.reduce((acc, bill) => {
-    // Skip inactive bills and one-off payments
-    if (!bill.is_active || bill.is_one_off) return acc
-    const multiplier = frequencyToMonthly[bill.frequency] || 1
-    const monthlyAmount = Number(bill.amount) * multiplier
-    acc[bill.category_id] = (acc[bill.category_id] || 0) + monthlyAmount
-    return acc
-  }, {} as Record<string, number>)
 
   // Calculate monthly debt payments
   const monthlyDebtPayments = debtAccounts.reduce((total, account) => {
@@ -153,8 +145,7 @@ export function BudgetBuilder({
     return total + (Number(account.minimum_payment) * multiplier)
   }, 0)
 
-  // Calculate monthly sinking funds for quarterly/yearly bills
-  // Sort by due date (soonest first), then by amount (largest first)
+  // Sinking funds: quarterly/yearly bills (set aside monthly)
   const infrequentBills = bills
     .filter(b =>
       b.is_active &&
@@ -164,26 +155,27 @@ export function BudgetBuilder({
     .sort((a, b) => {
       const dateA = new Date(a.next_due).getTime()
       const dateB = new Date(b.next_due).getTime()
-      if (dateA !== dateB) return dateA - dateB // Soonest first
-      return Number(b.amount) - Number(a.amount) // Then largest first
+      if (dateA !== dateB) return dateA - dateB
+      return Number(b.amount) - Number(a.amount)
     })
   const monthlySinkingFunds = infrequentBills.reduce((sum, bill) => {
     const divisor = bill.frequency === 'yearly' ? 12 : 3
     return sum + (Number(bill.amount) / divisor)
   }, 0)
 
+  // Filter out categories covered by the Fixed Bills section to avoid double-counting
+  const fixedBillCategoryNames = ['subscriptions', 'subscription', 'fixed bills', 'bills', 'bills & subscriptions']
+  const budgetCategories = categories.filter(c =>
+    !fixedBillCategoryNames.includes(c.name.toLowerCase())
+  )
+
   const [allocations, setAllocations] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {}
-    // First, set allocations from existing budgets
     budgets.forEach(b => {
-      initial[b.category_id] = Number(b.allocated)
-    })
-    // For categories with bills, ensure allocation covers the recurring costs
-    Object.entries(billsCostByCategory).forEach(([categoryId, monthlyCost]) => {
-      const rounded = Math.ceil(monthlyCost)
-      // Only update if current allocation is less than needed
-      if (!initial[categoryId] || initial[categoryId] < rounded) {
-        initial[categoryId] = rounded
+      // Skip allocations for categories handled by Fixed Bills
+      const isFixedBillCat = categories.find(c => c.id === b.category_id && fixedBillCategoryNames.includes(c.name.toLowerCase()))
+      if (!isFixedBillCat) {
+        initial[b.category_id] = Number(b.allocated)
       }
     })
     return initial
@@ -191,6 +183,7 @@ export function BudgetBuilder({
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
+  const [extraDebtPayment, setExtraDebtPayment] = useState(savedExtraDebtPayment)
   const [sinkingFundsExpanded, setSinkingFundsExpanded] = useState(false)
   const [editingContribution, setEditingContribution] = useState(false)
   const [contributionAmount, setContributionAmount] = useState(userContribution)
@@ -198,13 +191,14 @@ export function BudgetBuilder({
   const [savingContribution, setSavingContribution] = useState(false)
 
   const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + a, 0)
-  const totalAllocatedWithDebt = totalAllocated + monthlyDebtPayments
-  const unallocated = totalIncome - totalAllocatedWithDebt
+  const totalFixedCosts = monthlySinkingFunds + monthlyDebtPayments + extraDebtPayment
+  const totalCommitted = totalAllocated + totalFixedCosts
+  const unallocated = totalIncome - totalCommitted
   const isBalanced = Math.abs(unallocated) < 0.01
 
   // Calculate total debt and savings allocation for smart suggestions
   const totalDebtBalance = debtAccounts.reduce((sum, a) => sum + Number(a.balance), 0)
-  const savingsCategory = categories.find(c =>
+  const savingsCategory = budgetCategories.find(c =>
     c.name.toLowerCase().includes('saving') || c.name.toLowerCase().includes('emergency')
   )
   const savingsAllocation = savingsCategory ? (allocations[savingsCategory.id] || 0) : 0
@@ -239,7 +233,9 @@ export function BudgetBuilder({
     )
   }
 
-  async function handleSave() {
+  async function handleSave(overrides?: { extraDebt?: number; allocs?: Record<string, number> }) {
+    const extraDebt = overrides?.extraDebt !== undefined ? overrides.extraDebt : extraDebtPayment
+    const saveAllocations = overrides?.allocs || allocations
     setSaving(true)
     setSaveSuccess(false)
 
@@ -277,7 +273,7 @@ export function BudgetBuilder({
       }
     }
 
-    const inserts = Object.entries(allocations)
+    const inserts = Object.entries(saveAllocations)
       .filter(([, allocated]) => allocated > 0)
       .map(([categoryId, allocated]) => ({
         user_id: user.id,
@@ -294,6 +290,35 @@ export function BudgetBuilder({
         setSaving(false)
         return
       }
+    }
+
+    // Save budget settings (extra debt payment) - delete + insert to handle NULL household_id
+    if (isHousehold && householdId) {
+      await supabase
+        .from('budget_settings')
+        .delete()
+        .eq('household_id', householdId)
+        .eq('month', currentMonth)
+    } else {
+      await supabase
+        .from('budget_settings')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('month', currentMonth)
+        .is('household_id', null)
+    }
+
+    const { error: settingsError } = await supabase
+      .from('budget_settings')
+      .insert({
+        user_id: user.id,
+        household_id: isHousehold ? householdId : null,
+        month: currentMonth,
+        extra_debt_payment: extraDebt,
+      })
+
+    if (settingsError) {
+      console.error('Error saving budget settings:', settingsError)
     }
 
     setSaving(false)
@@ -351,7 +376,7 @@ export function BudgetBuilder({
             className={`h-full rounded-full transition-all duration-300 ${
               isBalanced ? 'bg-sprout-500' : unallocated < 0 ? 'bg-red-500' : 'bg-bloom-500'
             }`}
-            style={{ width: `${Math.min((totalAllocatedWithDebt / totalIncome) * 100, 100)}%` }}
+            style={{ width: `${Math.min((totalCommitted / totalIncome) * 100, 100)}%` }}
           />
         </div>
 
@@ -382,6 +407,124 @@ export function BudgetBuilder({
         )}
       </div>
 
+      {/* Unallocated Funds Suggestions */}
+      {unallocated > 0.01 && totalIncome > 0 && (
+        <div className="card bg-gradient-to-br from-coral-50 to-amber-50 border border-coral-200">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-coral-100 flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-4 h-4 text-coral-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-coral-700">
+                {formatCurrency(unallocated)} left to allocate
+              </p>
+              <p className="text-xs mt-1 text-coral-600">
+                Give every dollar a job to stay on track. Here are some ideas:
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {(() => {
+              const savingsCat = budgetCategories.find(c =>
+                c.name.toLowerCase().includes('saving') ||
+                c.name.toLowerCase().includes('emergency')
+              )
+              if (!savingsCat) return null
+              return (
+                <button
+                  onClick={() => {
+                    const newAllocations = {
+                      ...allocations,
+                      [savingsCat.id]: (allocations[savingsCat.id] || 0) + unallocated
+                    }
+                    setAllocations(newAllocations)
+                    handleSave({ allocs: newAllocations })
+                  }}
+                  className="w-full flex items-center justify-between p-3 bg-white hover:bg-sprout-50 border border-coral-200 rounded-lg transition-colors group"
+                >
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-gray-900 group-hover:text-sprout-700">
+                      Add to {savingsCat.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Boost your savings by {formatCurrency(unallocated)}
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-sprout-600 bg-sprout-100 px-2 py-1 rounded">
+                    +{formatCurrency(unallocated)}
+                  </span>
+                </button>
+              )
+            })()}
+
+            {debtAccounts.length > 0 && (
+              <button
+                onClick={() => {
+                  const newAmount = extraDebtPayment + unallocated
+                  setExtraDebtPayment(newAmount)
+                  handleSave({ extraDebt: newAmount })
+                }}
+                className="w-full flex items-center justify-between p-3 bg-white hover:bg-amber-50 border border-coral-200 rounded-lg transition-colors group"
+              >
+                <div className="text-left">
+                  <p className="text-sm font-medium text-gray-900 group-hover:text-amber-700">
+                    Pay down debt faster
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Add {formatCurrency(unallocated)} extra to debt repayment
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                  +{formatCurrency(unallocated)}
+                </span>
+              </button>
+            )}
+
+            {(() => {
+              const underfunded = budgetCategories.filter(c => {
+                const allocated = allocations[c.id] || 0
+                const spent = spentByCategory[c.id] || 0
+                return spent > allocated
+              })
+              if (underfunded.length === 0) return null
+              const perCategory = Math.floor(unallocated / underfunded.length)
+              return (
+                <button
+                  onClick={() => {
+                    let remaining = unallocated
+                    setAllocations(prev => {
+                      const updated = { ...prev }
+                      underfunded.forEach((c, i) => {
+                        const amount = i === underfunded.length - 1
+                          ? remaining
+                          : perCategory
+                        updated[c.id] = (updated[c.id] || 0) + amount
+                        remaining -= amount
+                      })
+                      return updated
+                    })
+                  }}
+                  className="w-full flex items-center justify-between p-3 bg-white hover:bg-bloom-50 border border-coral-200 rounded-lg transition-colors group"
+                >
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-gray-900 group-hover:text-bloom-700">
+                      Cover overspent categories
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Top up {underfunded.length} categor{underfunded.length === 1 ? 'y' : 'ies'} where spending exceeds budget
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-bloom-600 bg-bloom-100 px-2 py-1 rounded">
+                    Fix it
+                  </span>
+                </button>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Debt vs Savings Warning */}
       {hasDebtAndSavings && (
         <div className="card bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200">
@@ -400,7 +543,8 @@ export function BudgetBuilder({
           <button
             onClick={() => {
               if (!savingsCategory) return
-              // Move savings allocation to reduce unallocated (which can go to debt)
+              // Move savings allocation to extra debt repayment
+              setExtraDebtPayment(prev => prev + savingsAllocation)
               setAllocations(prev => ({
                 ...prev,
                 [savingsCategory.id]: 0
@@ -730,9 +874,9 @@ export function BudgetBuilder({
           </div>
       )}
 
-      {/* Category Allocations */}
+      {/* Category Allocations (discretionary spending) */}
       <div className="space-y-3">
-        {categories.map((category) => {
+        {budgetCategories.map((category) => {
           const allocated = allocations[category.id] || 0
           const spent = spentByCategory[category.id] || 0
           const memberBreakdown = isHousehold ? getMemberBreakdown(category.id) : []
@@ -1037,7 +1181,7 @@ export function BudgetBuilder({
       </div>
 
       {/* Debt Repayments Section */}
-      {debtAccounts.length > 0 && monthlyDebtPayments > 0 && (
+      {debtAccounts.length > 0 && (monthlyDebtPayments > 0 || extraDebtPayment > 0) && (
         <div className="card bg-gradient-to-br from-amber-50 to-orange-50">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1046,10 +1190,12 @@ export function BudgetBuilder({
               </div>
               <div>
                 <p className="font-medium text-gray-900">Debt Repayments</p>
-                <p className="text-xs text-gray-500">Monthly minimum payments</p>
+                <p className="text-xs text-gray-500">
+                  {extraDebtPayment > 0 ? 'Minimum + extra payments' : 'Monthly minimum payments'}
+                </p>
               </div>
             </div>
-            <p className="text-lg font-bold text-amber-600">{formatCurrency(monthlyDebtPayments)}</p>
+            <p className="text-lg font-bold text-amber-600">{formatCurrency(monthlyDebtPayments + extraDebtPayment)}</p>
           </div>
           <div className="space-y-2">
             {debtAccounts.map((account) => {
@@ -1078,6 +1224,24 @@ export function BudgetBuilder({
               )
             })}
           </div>
+          {extraDebtPayment > 0 && (
+            <div className="flex items-center justify-between py-2 px-3 bg-sprout-50 rounded-lg mt-2">
+              <div>
+                <p className="text-sm font-medium text-sprout-700">Extra debt payment</p>
+                <p className="text-xs text-sprout-600">Redirected from savings</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-sprout-700">+{formatCurrency(extraDebtPayment)}</p>
+                <button
+                  onClick={() => setExtraDebtPayment(0)}
+                  className="text-xs text-gray-400 hover:text-red-500"
+                  title="Remove extra payment"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
           <Link
             href="/debt-planner"
             className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-amber-200/50 text-sm text-amber-700 hover:text-amber-800 font-medium"
@@ -1199,7 +1363,7 @@ export function BudgetBuilder({
           <div className="mt-4 space-y-2">
             {/* Option 1: Take from Savings */}
             {(() => {
-              const savingsCategory = categories.find(c =>
+              const savingsCategory = budgetCategories.find(c =>
                 c.name.toLowerCase().includes('saving') ||
                 c.name.toLowerCase().includes('emergency')
               )
@@ -1239,7 +1403,7 @@ export function BudgetBuilder({
 
             {/* Option 2: Show categories trending under budget */}
             {(() => {
-              const savingsCategory = categories.find(c =>
+              const savingsCategory = budgetCategories.find(c =>
                 c.name.toLowerCase().includes('saving') ||
                 c.name.toLowerCase().includes('emergency')
               )
@@ -1249,7 +1413,7 @@ export function BudgetBuilder({
               const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
               const monthProgress = dayOfMonth / daysInMonth
 
-              const sortedCategories = categories
+              const sortedCategories = budgetCategories
                 .filter(c => (allocations[c.id] || 0) > 0)
                 .filter(c => !savingsCategory || c.id !== savingsCategory.id) // Exclude savings
                 .filter(c => { // Exclude fixed expenses like rent/mortgage

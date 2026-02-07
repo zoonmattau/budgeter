@@ -19,6 +19,7 @@ interface RecentTransactionsProps {
   transactions: TransactionWithCategory[]
   categories: Tables<'categories'>[]
   creditCards: Tables<'accounts'>[]
+  bankAccounts?: Tables<'accounts'>[]
   showMemberBadge?: boolean
   members?: HouseholdMember[]
   currentUserId?: string
@@ -28,6 +29,7 @@ export function RecentTransactions({
   transactions,
   categories,
   creditCards,
+  bankAccounts = [],
   showMemberBadge = false,
   members = [],
   currentUserId,
@@ -102,6 +104,7 @@ export function RecentTransactions({
           transaction={selectedTransaction}
           categories={categories}
           creditCards={creditCards}
+          bankAccounts={bankAccounts}
           onClose={() => setSelectedTransaction(null)}
         />
       )}

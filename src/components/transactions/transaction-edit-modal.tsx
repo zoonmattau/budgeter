@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Trash2, CheckCircle2, CreditCard, RefreshCw } from 'lucide-react'
+import { X, Trash2, CheckCircle2, CreditCard, RefreshCw, Landmark } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -29,6 +29,7 @@ interface TransactionEditModalProps {
   transaction: TransactionWithCategory
   categories: Tables<'categories'>[]
   creditCards?: Tables<'accounts'>[]
+  bankAccounts?: Tables<'accounts'>[]
   onClose: () => void
 }
 
@@ -36,6 +37,7 @@ export function TransactionEditModal({
   transaction,
   categories,
   creditCards = [],
+  bankAccounts = [],
   onClose,
 }: TransactionEditModalProps) {
   const router = useRouter()
@@ -123,29 +125,55 @@ export function TransactionEditModal({
       })
       .eq('id', transaction.id)
 
-    // Update credit card balance if card changed
+    // Update account balances if account changed
     if (!error && selectedCardId !== transaction.account_id) {
-      // Remove from old card
+      // Revert old account balance
       if (transaction.account_id) {
         const oldCard = creditCards.find(c => c.id === transaction.account_id)
+        const oldBank = bankAccounts.find(a => a.id === transaction.account_id)
         if (oldCard) {
+          // Undo credit card: expense added balance, so subtract to revert
+          // Income on credit card is not typical, but handle gracefully
+          const revert = isIncome ? transaction.amount : -transaction.amount
           await supabase
             .from('accounts')
             .update({
-              balance: oldCard.balance - transaction.amount,
+              balance: oldCard.balance + revert,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', transaction.account_id)
+        } else if (oldBank) {
+          // Undo bank account: expense subtracted, income added
+          const revert = isIncome ? -transaction.amount : transaction.amount
+          await supabase
+            .from('accounts')
+            .update({
+              balance: oldBank.balance + revert,
               updated_at: new Date().toISOString(),
             })
             .eq('id', transaction.account_id)
         }
       }
-      // Add to new card
+      // Apply to new account
       if (selectedCardId) {
         const newCard = creditCards.find(c => c.id === selectedCardId)
+        const newBank = bankAccounts.find(a => a.id === selectedCardId)
         if (newCard) {
+          // Credit card: expense increases balance
           await supabase
             .from('accounts')
             .update({
               balance: newCard.balance + parseFloat(amount),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', selectedCardId)
+        } else if (newBank) {
+          // Bank account: expense decreases, income increases
+          const change = isIncome ? parseFloat(amount) : -parseFloat(amount)
+          await supabase
+            .from('accounts')
+            .update({
+              balance: newBank.balance + change,
               updated_at: new Date().toISOString(),
             })
             .eq('id', selectedCardId)
@@ -167,14 +195,26 @@ export function TransactionEditModal({
   async function handleDelete() {
     setDeleting(true)
 
-    // If on a credit card, reduce the balance
+    // Revert account balance on delete
     if (transaction.account_id) {
       const card = creditCards.find(c => c.id === transaction.account_id)
+      const bank = bankAccounts.find(a => a.id === transaction.account_id)
       if (card) {
+        // Credit card expense: balance was increased, so decrease to revert
         await supabase
           .from('accounts')
           .update({
             balance: card.balance - transaction.amount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', transaction.account_id)
+      } else if (bank) {
+        // Bank account: expense decreased balance (revert by adding), income increased balance (revert by subtracting)
+        const revert = isIncome ? -transaction.amount : transaction.amount
+        await supabase
+          .from('accounts')
+          .update({
+            balance: bank.balance + revert,
             updated_at: new Date().toISOString(),
           })
           .eq('id', transaction.account_id)
@@ -401,8 +441,8 @@ export function TransactionEditModal({
               )}
             </div>
 
-            {/* Credit Card Selection - for expenses */}
-            {!isIncome && creditCards.length > 0 && (
+            {/* Payment Method - for expenses */}
+            {!isIncome && (creditCards.length > 0 || bankAccounts.length > 0) && (
               <div>
                 <label className="label">Payment Method</label>
                 <div className="flex flex-wrap gap-2">
@@ -417,6 +457,21 @@ export function TransactionEditModal({
                   >
                     Cash/Debit
                   </button>
+                  {bankAccounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => setSelectedCardId(account.id)}
+                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                        selectedCardId === account.id
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-100 text-gray-500 hover:bg-blue-50'
+                      }`}
+                    >
+                      <Landmark className="w-3.5 h-3.5" />
+                      {account.name}
+                    </button>
+                  ))}
                   {creditCards.map((card) => (
                     <button
                       key={card.id}
@@ -436,6 +491,51 @@ export function TransactionEditModal({
                 {currentCard && (
                   <p className="text-xs text-purple-600 mt-1.5">
                     Current balance: {formatCurrency(currentCard.balance)}
+                  </p>
+                )}
+                {selectedCardId && bankAccounts.find(a => a.id === selectedCardId) && (
+                  <p className="text-xs text-blue-600 mt-1.5">
+                    Current balance: {formatCurrency(bankAccounts.find(a => a.id === selectedCardId)!.balance)}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Deposit To - for income */}
+            {isIncome && bankAccounts.length > 0 && (
+              <div>
+                <label className="label">Deposit to</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCardId(null)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                      selectedCardId === null
+                        ? 'bg-gray-200 text-gray-800'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
+                    }`}
+                  >
+                    No account
+                  </button>
+                  {bankAccounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => setSelectedCardId(account.id)}
+                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${
+                        selectedCardId === account.id
+                          ? 'bg-sprout-100 text-sprout-700'
+                          : 'bg-gray-100 text-gray-500 hover:bg-sprout-50'
+                      }`}
+                    >
+                      <Landmark className="w-3.5 h-3.5" />
+                      {account.name}
+                    </button>
+                  ))}
+                </div>
+                {selectedCardId && bankAccounts.find(a => a.id === selectedCardId) && (
+                  <p className="text-xs text-sprout-600 mt-1.5">
+                    Current balance: {formatCurrency(bankAccounts.find(a => a.id === selectedCardId)!.balance)}
                   </p>
                 )}
               </div>

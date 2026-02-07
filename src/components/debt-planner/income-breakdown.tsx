@@ -14,6 +14,8 @@ interface BudgetItem {
 
 interface IncomeBreakdownProps {
   monthlyIncome: number
+  monthlyBills?: number
+  monthlyInterest?: number
   budgetItems?: BudgetItem[]
   expenseAllocations?: number
   savingsAllocations?: number
@@ -24,6 +26,8 @@ interface IncomeBreakdownProps {
 
 export function IncomeBreakdown({
   monthlyIncome,
+  monthlyBills = 0,
+  monthlyInterest = 0,
   budgetItems = [],
   expenseAllocations = 0,
   savingsAllocations = 0,
@@ -52,8 +56,8 @@ export function IncomeBreakdown({
   const subscriptionTotal = subscriptionItems.reduce((sum, b) => sum + b.amount, 0)
   const otherExpenseTotal = otherExpenseItems.reduce((sum, b) => sum + b.amount, 0)
 
-  // Fixed costs = expenses + debt repayments
-  const fixedCosts = expenseAllocations + minimumDebtPayments
+  // Fixed costs = expenses + bills + interest + debt repayments
+  const fixedCosts = expenseAllocations + monthlyBills + monthlyInterest + minimumDebtPayments
 
   // Available = income - fixed costs (savings is NOT a fixed cost)
   const available = monthlyIncome - fixedCosts
@@ -65,13 +69,15 @@ export function IncomeBreakdown({
   const maxExtra = Math.max(0, available)
 
   // Visual bar calculations
+  const billsWidth = monthlyIncome > 0 ? (monthlyBills / monthlyIncome) * 100 : 0
+  const interestWidth = monthlyIncome > 0 ? (monthlyInterest / monthlyIncome) * 100 : 0
   const rentWidth = monthlyIncome > 0 ? (rentTotal / monthlyIncome) * 100 : 0
   const subscriptionWidth = monthlyIncome > 0 ? (subscriptionTotal / monthlyIncome) * 100 : 0
   const otherExpenseWidth = monthlyIncome > 0 ? (otherExpenseTotal / monthlyIncome) * 100 : 0
   const repaymentWidth = monthlyIncome > 0 ? (minimumDebtPayments / monthlyIncome) * 100 : 0
   const extraWidth = monthlyIncome > 0 ? (extraPayment / monthlyIncome) * 100 : 0
   const savingsWidth = monthlyIncome > 0 ? (Math.max(0, savingsAllocations - extraPayment) / monthlyIncome) * 100 : 0
-  const remainingWidth = Math.max(0, 100 - rentWidth - subscriptionWidth - otherExpenseWidth - repaymentWidth - extraWidth - savingsWidth)
+  const remainingWidth = Math.max(0, 100 - billsWidth - interestWidth - rentWidth - subscriptionWidth - otherExpenseWidth - repaymentWidth - extraWidth - savingsWidth)
 
   return (
     <div className="card">
@@ -79,6 +85,13 @@ export function IncomeBreakdown({
 
       {/* Visual bar */}
       <div className="h-8 rounded-xl overflow-hidden flex mb-4">
+        {billsWidth > 0 && (
+          <div
+            className="bg-orange-400 flex items-center justify-center cursor-default"
+            style={{ width: `${billsWidth}%` }}
+            title={`Bills\n${formatCurrency(monthlyBills)}`}
+          />
+        )}
         {rentWidth > 0 && (
           <div
             className="bg-indigo-500 flex items-center justify-center cursor-default"
@@ -98,6 +111,13 @@ export function IncomeBreakdown({
             className="bg-blue-400 flex items-center justify-center cursor-default"
             style={{ width: `${otherExpenseWidth}%` }}
             title={`Other Expenses\n${formatCurrency(otherExpenseTotal)}`}
+          />
+        )}
+        {interestWidth > 0 && (
+          <div
+            className="bg-amber-500 flex items-center justify-center cursor-default"
+            style={{ width: `${interestWidth}%` }}
+            title={`Interest Charges\n${formatCurrency(monthlyInterest)}`}
           />
         )}
         {repaymentWidth > 0 && (
@@ -137,6 +157,17 @@ export function IncomeBreakdown({
           <span className="font-medium text-gray-900">Monthly Income</span>
           <span className="font-bold text-gray-900">{formatCurrency(monthlyIncome)}</span>
         </div>
+
+        {/* Bills */}
+        {monthlyBills > 0 && (
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-orange-400" />
+              <span className="text-sm text-gray-600">Bills</span>
+            </div>
+            <span className="text-sm font-medium text-gray-700">-{formatCurrency(monthlyBills)}</span>
+          </div>
+        )}
 
         {/* Rent/Mortgage */}
         {rentTotal > 0 && (
@@ -188,6 +219,17 @@ export function IncomeBreakdown({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Interest charges */}
+        {monthlyInterest > 0 && (
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-amber-500" />
+              <span className="text-sm text-gray-600">Interest Charges</span>
+            </div>
+            <span className="text-sm font-medium text-gray-700">-{formatCurrency(monthlyInterest)}</span>
           </div>
         )}
 

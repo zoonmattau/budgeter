@@ -77,7 +77,7 @@ export function getDailySpending(
 export function getCategoryBudgetComparison(
   transactions: Transaction[],
   budgets: Budget[]
-): { name: string; spent: number; budgeted: number; color: string }[] {
+): { name: string; categoryId: string; spent: number; budgeted: number; color: string }[] {
   const spentByCategory = new Map<string, number>()
 
   transactions
@@ -92,10 +92,12 @@ export function getCategoryBudgetComparison(
   return budgets
     .map((b) => ({
       name: b.categories?.name || 'Unknown',
+      categoryId: b.category_id,
       spent: spentByCategory.get(b.category_id) || 0,
       budgeted: Number(b.allocated),
       color: b.categories?.color || '#94a3b8',
     }))
+    .filter(b => b.budgeted > 0 || b.spent > 0)
     .sort((a, b) => b.budgeted - a.budgeted)
 }
 

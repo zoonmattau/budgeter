@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { BillsTimeline } from '@/components/bills/bills-timeline'
 import { BillsStats } from '@/components/bills/bills-stats'
 import { formatCurrency } from '@/lib/utils'
-import { endOfWeek, addWeeks, endOfMonth, differenceInDays } from 'date-fns'
+import { endOfMonth, differenceInDays } from 'date-fns'
 
 export default async function BillsPage() {
   const supabase = await createClient()
@@ -20,30 +20,29 @@ export default async function BillsPage() {
     .order('next_due', { ascending: true })
 
   const today = new Date()
-  const thisWeekEnd = endOfWeek(today, { weekStartsOn: 1 })
-  const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 })
   const thisMonthEnd = endOfMonth(today)
 
-  // Group bills by time period
+  // Group bills by time period using rolling 7-day windows
+  // (matches the dashboard summary logic)
   const overdueBills = bills?.filter(b => {
-    const due = new Date(b.next_due)
-    return differenceInDays(due, today) < 0
+    const days = differenceInDays(new Date(b.next_due), today)
+    return days < 0
   }) || []
 
   const thisWeekBills = bills?.filter(b => {
-    const due = new Date(b.next_due)
-    const days = differenceInDays(due, today)
-    return days >= 0 && due <= thisWeekEnd
+    const days = differenceInDays(new Date(b.next_due), today)
+    return days >= 0 && days <= 7
   }) || []
 
   const nextWeekBills = bills?.filter(b => {
-    const due = new Date(b.next_due)
-    return due > thisWeekEnd && due <= nextWeekEnd
+    const days = differenceInDays(new Date(b.next_due), today)
+    return days > 7 && days <= 14
   }) || []
 
   const thisMonthBills = bills?.filter(b => {
     const due = new Date(b.next_due)
-    return due > nextWeekEnd && due <= thisMonthEnd
+    const days = differenceInDays(due, today)
+    return days > 14 && due <= thisMonthEnd
   }) || []
 
   const laterBills = bills?.filter(b => {

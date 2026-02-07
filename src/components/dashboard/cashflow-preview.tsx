@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { format, parseISO, isToday, isTomorrow, addDays, startOfDay } from 'date-fns'
+import { format, parseISO, isToday, isTomorrow, isYesterday, addDays, subDays, startOfDay, isBefore } from 'date-fns'
 import { ArrowRight, ArrowUpCircle, ArrowDownCircle, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import type { IncomeEntry, Bill } from '@/lib/timeline-calculator'
@@ -22,15 +22,20 @@ function formatDayLabel(dateStr: string): { day: string; date: string } {
   const date = parseISO(dateStr)
   if (isToday(date)) return { day: 'Today', date: format(date, 'd') }
   if (isTomorrow(date)) return { day: 'Tomorrow', date: format(date, 'd') }
+  if (isYesterday(date)) return { day: 'Yesterday', date: format(date, 'd') }
   return { day: format(date, 'EEE'), date: format(date, 'd') }
 }
 
 function generateDaysWithEvents(
   incomeEntries: IncomeEntry[],
   bills: Bill[],
-  days: number
-): DayEvents[] {
-  const start = startOfDay(new Date())
+  pastDays: number,
+  futureDays: number
+): { days: DayEvents[]; todayIndex: number } {
+  const today = startOfDay(new Date())
+  const start = subDays(today, pastDays)
+  const end = addDays(today, futureDays)
+  const totalDays = pastDays + futureDays
   const result: DayEvents[] = []
 
   // Build a map of events by date
@@ -40,9 +45,21 @@ function generateDaysWithEvents(
   for (const income of incomeEntries) {
     if (!income.is_recurring || !income.pay_frequency || !income.next_pay_date) continue
 
+    // Walk backwards from next_pay_date to find occurrences in past range
     let payDate = parseISO(income.next_pay_date)
-    const end = addDays(start, days)
 
+    // Rewind pay date to before our start
+    while (isBefore(start, payDate)) {
+      if (income.pay_frequency === 'weekly') {
+        payDate = subDays(payDate, 7)
+      } else if (income.pay_frequency === 'fortnightly') {
+        payDate = subDays(payDate, 14)
+      } else {
+        payDate = new Date(payDate.getFullYear(), payDate.getMonth() - 1, payDate.getDate())
+      }
+    }
+
+    // Now walk forward through the range
     while (payDate <= end) {
       if (payDate >= start) {
         const dateKey = format(payDate, 'yyyy-MM-dd')
@@ -51,7 +68,6 @@ function generateDaysWithEvents(
         eventsByDate.set(dateKey, existing)
       }
 
-      // Move to next pay date
       if (income.pay_frequency === 'weekly') {
         payDate = addDays(payDate, 7)
       } else if (income.pay_frequency === 'fortnightly') {
@@ -67,7 +83,29 @@ function generateDaysWithEvents(
     if (!bill.is_active) continue
 
     let billDate = parseISO(bill.next_due)
-    const end = addDays(start, days)
+
+    // Rewind bill date to before our start (for recurring bills)
+    if (!bill.is_one_off) {
+      while (isBefore(start, billDate)) {
+        switch (bill.frequency) {
+          case 'weekly':
+            billDate = subDays(billDate, 7)
+            break
+          case 'fortnightly':
+            billDate = subDays(billDate, 14)
+            break
+          case 'monthly':
+            billDate = new Date(billDate.getFullYear(), billDate.getMonth() - 1, billDate.getDate())
+            break
+          case 'quarterly':
+            billDate = new Date(billDate.getFullYear(), billDate.getMonth() - 3, billDate.getDate())
+            break
+          case 'yearly':
+            billDate = new Date(billDate.getFullYear() - 1, billDate.getMonth(), billDate.getDate())
+            break
+        }
+      }
+    }
 
     while (billDate <= end) {
       if (billDate >= start) {
@@ -79,7 +117,6 @@ function generateDaysWithEvents(
 
       if (bill.is_one_off) break
 
-      // Move to next bill date
       switch (bill.frequency) {
         case 'weekly':
           billDate = addDays(billDate, 7)
@@ -101,7 +138,7 @@ function generateDaysWithEvents(
   }
 
   // Generate day array
-  for (let i = 0; i < days; i++) {
+  for (let i = 0; i < totalDays; i++) {
     const date = addDays(start, i)
     const dateKey = format(date, 'yyyy-MM-dd')
     result.push({
@@ -110,11 +147,27 @@ function generateDaysWithEvents(
     })
   }
 
-  return result
+  return { days: result, todayIndex: pastDays }
 }
 
 export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) {
   const [selectedDay, setSelectedDay] = useState<DayEvents | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const todayRef = useRef<HTMLButtonElement>(null)
+
+  // Auto-scroll so today is the second visible card from the left
+  useEffect(() => {
+    if (todayRef.current && scrollRef.current) {
+      const container = scrollRef.current
+      const todayEl = todayRef.current
+      const containerRect = container.getBoundingClientRect()
+      const todayRect = todayEl.getBoundingClientRect()
+      // How far today currently is from the container's left edge, plus current scroll
+      const todayScrollPos = todayRect.left - containerRect.left + container.scrollLeft
+      // Offset by one card width + gap so today lands as the second card
+      container.scrollLeft = Math.max(0, todayScrollPos - todayEl.offsetWidth - 8)
+    }
+  }, [])
 
   // Check if pay schedule is configured
   const hasPaySchedule = incomeEntries.some(
@@ -137,7 +190,7 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
     )
   }
 
-  const daysWithEvents = generateDaysWithEvents(incomeEntries, bills, 14)
+  const { days: daysWithEvents } = generateDaysWithEvents(incomeEntries, bills, 7, 14)
 
   return (
     <section>
@@ -150,10 +203,12 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
       </div>
 
       {/* Horizontal scrollable day-by-day timeline */}
-      <div className="overflow-x-auto -mx-4 px-4 pb-2">
+      <div ref={scrollRef} className="overflow-x-auto -mx-4 px-4 pb-2">
         <div className="flex gap-2" style={{ width: 'max-content' }}>
           {daysWithEvents.map((day) => {
             const { day: dayLabel, date } = formatDayLabel(day.date)
+            const dayDate = parseISO(day.date)
+            const isPast = isBefore(dayDate, startOfDay(new Date())) && !isToday(dayDate)
             const hasIncome = day.events.some(e => e.type === 'income')
             const hasBill = day.events.some(e => e.type === 'bill')
             const totalIn = day.events.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0)
@@ -162,22 +217,27 @@ export function CashflowPreview({ incomeEntries, bills }: CashflowPreviewProps) 
             return (
               <button
                 key={day.date}
+                ref={isToday(dayDate) ? todayRef : undefined}
                 onClick={() => setSelectedDay(day)}
                 className={`flex-shrink-0 w-16 rounded-xl p-2 text-center transition-all ${
-                  isToday(parseISO(day.date))
+                  isToday(dayDate)
                     ? 'bg-bloom-100 border-2 border-bloom-300'
+                    : isPast
+                    ? day.events.length > 0
+                      ? 'bg-gray-100 border border-gray-200 hover:border-gray-300 opacity-70'
+                      : 'bg-gray-50 border border-gray-100 hover:border-gray-200 opacity-50'
                     : day.events.length > 0
                     ? 'bg-white border border-gray-200 hover:border-gray-300'
                     : 'bg-gray-50 border border-gray-100 hover:border-gray-200'
                 }`}
               >
                 <p className={`text-[10px] font-medium ${
-                  isToday(parseISO(day.date)) ? 'text-bloom-700' : 'text-gray-500'
+                  isToday(dayDate) ? 'text-bloom-700' : 'text-gray-500'
                 }`}>
                   {dayLabel}
                 </p>
                 <p className={`text-sm font-bold mb-2 ${
-                  isToday(parseISO(day.date)) ? 'text-bloom-800' : 'text-gray-700'
+                  isToday(dayDate) ? 'text-bloom-800' : 'text-gray-700'
                 }`}>
                   {date}
                 </p>

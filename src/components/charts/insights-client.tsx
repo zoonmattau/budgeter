@@ -65,6 +65,7 @@ export function InsightsClient({
 }: InsightsClientProps) {
   const [period, setPeriod] = useState<TimePeriod>('30')
   const [activeTab, setActiveTab] = useState<'spending' | 'income' | 'investments'>('spending')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
   const days = parseInt(period)
 
@@ -80,7 +81,13 @@ export function InsightsClient({
   // Calculate chart data
   const categoryData = aggregateSpendingByCategory(filteredTransactions, 6)
   const dailyData = getDailySpending(filteredTransactions, days)
-  const budgetComparison = getCategoryBudgetComparison(filteredTransactions, budgets)
+  const budgetComparisonRaw = getCategoryBudgetComparison(filteredTransactions, budgets)
+  // Scale budgets to match selected period (budgets are monthly)
+  const budgetScale = days / 30
+  const budgetComparison = budgetComparisonRaw.map(b => ({
+    ...b,
+    budgeted: Math.round(b.budgeted * budgetScale * 100) / 100,
+  }))
 
   // Stats
   const totalSpent = filteredTransactions
@@ -196,25 +203,64 @@ export function InsightsClient({
       {/* Budget vs actual */}
       {budgetComparison.length > 0 && (
         <section className="card">
-          <h2 className="font-display font-semibold text-gray-900 mb-1">
+          <h2 className="font-display font-semibold text-gray-900 mb-4">
             Budget vs Actual
           </h2>
-          <p className="text-xs text-gray-400 mb-4">
-            Green dashed line shows your budget for each category
-          </p>
-          <CategoryBarChart data={budgetComparison} height={Math.max(200, budgetComparison.length * 50)} />
+          <CategoryBarChart
+            data={budgetComparison}
+            onCategoryClick={(name) => setSelectedCategory(selectedCategory === name ? null : name)}
+            selectedCategory={selectedCategory}
+          />
+
+          {/* Category transaction drill-down */}
+          {selectedCategory && (() => {
+            const cat = budgetComparison.find(c => c.name === selectedCategory)
+            if (!cat) return null
+            const catTransactions = filteredTransactions
+              .filter(t => t.type === 'expense' && t.category_id === cat.categoryId)
+              .sort((a, b) => b.date.localeCompare(a.date))
+
+            return (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700">{selectedCategory} Transactions</h3>
+                  <button
+                    onClick={() => setSelectedCategory(null)}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Close
+                  </button>
+                </div>
+                {catTransactions.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">No transactions in this category</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {catTransactions.map(t => (
+                      <div key={t.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">{t.description}</p>
+                          <p className="text-xs text-gray-400">{new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</p>
+                        </div>
+                        <span className="text-sm font-semibold text-gray-700 ml-3">{formatCurrency(Number(t.amount))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </section>
       )}
 
       {/* Budget Breakdown by Category */}
-      {budgetComparison.length > 0 && (
+      {budgetComparisonRaw.length > 0 && (
         <section className="card">
           <h2 className="font-display font-semibold text-gray-900 mb-4">
             Budget Breakdown
           </h2>
           {/* Segmented bar */}
           <div className="h-8 rounded-lg overflow-hidden flex mb-4">
-            {budgetComparison.map((cat, i) => {
+            {budgetComparisonRaw.map((cat, i) => {
               const percent = totalBudgeted > 0 ? (cat.budgeted / totalBudgeted) * 100 : 0
               if (percent < 1) return null
               return (
@@ -231,7 +277,8 @@ export function InsightsClient({
           </div>
           {/* Category breakdown list */}
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {budgetComparison
+            {budgetComparisonRaw
+              .filter(b => b.budgeted > 0 || b.spent > 0)
               .sort((a, b) => b.budgeted - a.budgeted)
               .map((cat, i) => {
                 const budgetPercent = totalBudgeted > 0 ? (cat.budgeted / totalBudgeted) * 100 : 0
@@ -289,42 +336,34 @@ export function InsightsClient({
               Income History
             </h2>
             {incomeByMonth.length > 0 ? (
-              <div className="relative h-48">
-                <svg viewBox="0 0 100 50" className="w-full h-full" preserveAspectRatio="none">
-                  {/* Grid lines */}
-                  {[0, 0.5, 1].map((ratio) => (
-                    <line
-                      key={ratio}
-                      x1="0"
-                      y1={50 * (1 - ratio)}
-                      x2="100"
-                      y2={50 * (1 - ratio)}
-                      stroke="#e5e7eb"
-                      strokeWidth="0.5"
-                    />
-                  ))}
-                  {/* Bars */}
-                  {incomeByMonth.map((month, i) => {
-                    const barWidth = 100 / incomeByMonth.length - 2
-                    const barHeight = (month.amount / maxIncome) * 45
-                    const x = (i / incomeByMonth.length) * 100 + 1
+              <div>
+                {/* Y-axis label */}
+                <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                  <span>{formatCurrency(maxIncome)}</span>
+                </div>
+                {/* Bar chart */}
+                <div className="flex items-end gap-1 h-40 border-b border-gray-200">
+                  {incomeByMonth.map((month) => {
+                    const heightPercent = maxIncome > 0 ? (month.amount / maxIncome) * 100 : 0
                     return (
-                      <rect
-                        key={month.month}
-                        x={x}
-                        y={50 - barHeight}
-                        width={barWidth}
-                        height={barHeight}
-                        fill="#4ade80"
-                        rx="1"
-                      />
+                      <div key={month.month} className="flex-1 flex flex-col items-center justify-end h-full">
+                        <div
+                          className="w-full rounded-t bg-sprout-400 min-h-[2px] transition-all"
+                          style={{ height: `${Math.max(heightPercent, month.amount > 0 ? 2 : 0)}%` }}
+                          title={`${month.label}: ${formatCurrency(month.amount)}`}
+                        />
+                      </div>
                     )
                   })}
-                </svg>
+                </div>
                 {/* X-axis labels */}
-                <div className="flex justify-between text-xs text-gray-400 mt-2">
-                  {incomeByMonth.filter((_, i) => i % 3 === 0).map(month => (
-                    <span key={month.month}>{month.shortLabel}</span>
+                <div className="flex gap-1 mt-1.5">
+                  {incomeByMonth.map((month, i) => (
+                    <div key={month.month} className="flex-1 text-center">
+                      <span className="text-[10px] text-gray-400">
+                        {incomeByMonth.length <= 6 || i % 2 === 0 ? month.shortLabel : ''}
+                      </span>
+                    </div>
                   ))}
                 </div>
               </div>
