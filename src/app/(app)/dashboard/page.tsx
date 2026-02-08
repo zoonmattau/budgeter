@@ -122,14 +122,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     scope === 'household' && householdId
       ? supabase
           .from('transactions')
-          .select('*, categories(*), profiles:user_id(display_name)')
+          .select('*, categories(*), profiles:user_id(display_name), accounts:account_id(name)')
           .eq('household_id', householdId)
           .gte('date', currentMonth)
           .lte('date', format(today, 'yyyy-MM-dd'))
           .order('date', { ascending: false })
       : supabase
           .from('transactions')
-          .select('*, categories(*)')
+          .select('*, categories(*), accounts:account_id(name)')
           .eq('user_id', user.id)
           .gte('date', currentMonth)
           .lte('date', format(today, 'yyyy-MM-dd'))

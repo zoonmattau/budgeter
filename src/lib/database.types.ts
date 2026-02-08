@@ -289,7 +289,7 @@ export interface Database {
           source: string
           amount: number
           is_recurring: boolean
-          pay_frequency: 'weekly' | 'fortnightly' | 'monthly' | null
+          pay_frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly' | null
           pay_day: number | null
           next_pay_date: string | null
           created_at: string
@@ -302,7 +302,7 @@ export interface Database {
           source: string
           amount: number
           is_recurring?: boolean
-          pay_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          pay_frequency?: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly' | null
           pay_day?: number | null
           next_pay_date?: string | null
           created_at?: string
@@ -315,7 +315,7 @@ export interface Database {
           source?: string
           amount?: number
           is_recurring?: boolean
-          pay_frequency?: 'weekly' | 'fortnightly' | 'monthly' | null
+          pay_frequency?: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly' | null
           pay_day?: number | null
           next_pay_date?: string | null
           created_at?: string

@@ -2,18 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Trash2, CheckCircle2, CreditCard, RefreshCw, Landmark } from 'lucide-react'
+import { X, Trash2, CheckCircle2, CreditCard, RefreshCw, Landmark, Plus } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { DatePicker } from '@/components/ui/date-picker'
+import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import { formatCurrency } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
 
 type TransactionWithCategory = Tables<'transactions'> & {
   categories: Tables<'categories'> | null
-  accounts?: Tables<'accounts'> | null
+  accounts?: { name: string } | Tables<'accounts'> | null
 }
 
 type BillWithPayments = Tables<'bills'> & {
@@ -54,6 +55,8 @@ export function TransactionEditModal({
   const [showSuccess, setShowSuccess] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showCreateCategory, setShowCreateCategory] = useState(false)
+  const [localCategories, setLocalCategories] = useState(categories)
 
   // Bill related state
   const [linkedBill, setLinkedBill] = useState<BillWithPayments | null>(null)
@@ -390,7 +393,7 @@ export function TransactionEditModal({
             <div>
               <label className="label">Category</label>
               <div className="grid grid-cols-4 gap-2">
-                {categories.slice(0, 8).map((cat) => (
+                {localCategories.map((cat) => (
                   <button
                     key={cat.id}
                     type="button"
@@ -412,33 +415,17 @@ export function TransactionEditModal({
                     />
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setShowCreateCategory(true)}
+                  className="p-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all flex flex-col items-center justify-center gap-1"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center">
+                    <Plus className="w-4 h-4 text-gray-500" />
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-medium">New</span>
+                </button>
               </div>
-              {categories.length > 8 && (
-                <div className="grid grid-cols-4 gap-2 mt-2">
-                  {categories.slice(8).map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`p-3 rounded-xl border-2 transition-all ${
-                        selectedCategory?.id === cat.id
-                          ? isIncome
-                            ? 'border-sprout-500 bg-sprout-50'
-                            : 'border-bloom-500 bg-bloom-50'
-                          : 'border-transparent bg-gray-50 hover:bg-gray-100'
-                      }`}
-                    >
-                      <CategoryChip
-                        name={cat.name}
-                        color={cat.color}
-                        icon={cat.icon}
-                        size="sm"
-                        showLabel
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Payment Method - for expenses */}
@@ -583,6 +570,17 @@ export function TransactionEditModal({
           </form>
         )}
       </div>
+
+      {showCreateCategory && (
+        <CreateCategoryModal
+          type={isIncome ? 'income' : 'expense'}
+          onClose={() => setShowCreateCategory(false)}
+          onCreated={(category) => {
+            setLocalCategories(prev => [...prev, category])
+            setSelectedCategory(category)
+          }}
+        />
+      )}
 
       <style jsx>{`
         @keyframes slide-up {

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Lightbulb, TrendingDown, ChevronRight, Calculator } from 'lucide-react'
+import { TrendingDown, ChevronRight, Calculator } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { AccountLogo } from '@/components/ui/account-logo'
 
@@ -128,14 +128,6 @@ export function DebtRepayments({ accounts, availableFunds, extraDebtPayment = 0 
                   </div>
                   <ChevronRight className="w-4 h-4 text-gray-300" />
                 </div>
-
-                {/* Suggestion reason */}
-                {suggestion.reason && (
-                  <div className="mt-2 flex items-start gap-2 p-2 bg-amber-50 rounded-lg">
-                    <Lightbulb className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-amber-700">{suggestion.reason}</p>
-                  </div>
-                )}
               </Link>
             )
           })}

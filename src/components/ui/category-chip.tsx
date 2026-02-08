@@ -6,12 +6,12 @@ import * as Icons from 'lucide-react'
 interface CategoryChipProps {
   name: string
   color: string
-  icon: string
+  icon?: string
   size?: 'sm' | 'md'
   showLabel?: boolean
 }
 
-export function CategoryChip({ name, color, icon, size = 'md', showLabel = false }: CategoryChipProps) {
+export function CategoryChip({ name, color, icon = 'Circle', size = 'md', showLabel = false }: CategoryChipProps) {
   // Get the icon component dynamically
   const IconComponent = getIconComponent(icon)
 

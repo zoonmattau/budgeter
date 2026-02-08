@@ -5,7 +5,7 @@ import { X, Calendar, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { format, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday } from 'date-fns'
 
-type PayFrequency = 'weekly' | 'fortnightly' | 'monthly'
+type PayFrequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
 
 const WEEKDAYS = [
   { value: 0, label: 'Sunday' },
@@ -58,6 +58,7 @@ export function PayScheduleModal({
   const supabase = createClient()
 
   const isWeekly = frequency === 'weekly' || frequency === 'fortnightly'
+  const usesMonthDay = frequency === 'monthly' || frequency === 'quarterly' || frequency === 'yearly'
 
   async function handleSave() {
     setSaving(true)
@@ -93,17 +94,24 @@ export function PayScheduleModal({
     }
   }
 
+
   function handlePayDayChange(newPayDay: number) {
     setPayDay(newPayDay)
     // Auto-calculate next pay date
-    if (isWeekly) {
+    if (!usesMonthDay) {
       const next = getNextDayOfWeek(newPayDay)
       setNextPayDate(format(next, 'yyyy-MM-dd'))
     } else {
       const today = new Date()
       let nextDate = new Date(today.getFullYear(), today.getMonth(), newPayDay)
       if (nextDate <= today) {
-        nextDate = new Date(today.getFullYear(), today.getMonth() + 1, newPayDay)
+        if (frequency === 'quarterly') {
+          nextDate = new Date(today.getFullYear(), today.getMonth() + 3, newPayDay)
+        } else if (frequency === 'yearly') {
+          nextDate = new Date(today.getFullYear() + 1, today.getMonth(), newPayDay)
+        } else {
+          nextDate = new Date(today.getFullYear(), today.getMonth() + 1, newPayDay)
+        }
       }
       setNextPayDate(format(nextDate, 'yyyy-MM-dd'))
     }
@@ -141,12 +149,12 @@ export function PayScheduleModal({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               How often do you get paid?
             </label>
-            <div className="flex gap-2">
-              {(['weekly', 'fortnightly', 'monthly'] as PayFrequency[]).map((f) => (
+            <div className="flex gap-2 flex-wrap">
+              {(['weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly'] as PayFrequency[]).map((f) => (
                 <button
                   key={f}
                   onClick={() => handleFrequencyChange(f)}
-                  className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all ${
+                  className={`py-2.5 px-3 rounded-xl text-sm font-medium transition-all ${
                     frequency === f
                       ? 'bg-bloom-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -163,7 +171,7 @@ export function PayScheduleModal({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {isWeekly ? 'Which day do you get paid?' : 'What day of the month?'}
             </label>
-            {isWeekly ? (
+            {!usesMonthDay ? (
               <div className="grid grid-cols-4 gap-2">
                 {WEEKDAYS.map((day) => (
                   <button

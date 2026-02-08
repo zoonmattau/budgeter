@@ -20,6 +20,7 @@ export default function OnboardingPage() {
   const [displayName, setDisplayName] = useState('')
   const [mobile, setMobile] = useState('')
   const [income, setIncome] = useState('')
+  const [incomeFrequency, setIncomeFrequency] = useState<'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'>('monthly')
   const [incomeSource, setIncomeSource] = useState('Salary')
   const [householdId, setHouseholdId] = useState<string | null>(null)
   const [preJoinedHouseholdName, setPreJoinedHouseholdName] = useState<string | null>(null)
@@ -68,13 +69,22 @@ export default function OnboardingPage() {
 
       // Save income if provided
       if (income) {
+        // Convert entered amount to monthly for storage
+        const rawAmount = parseFloat(income)
+        const monthlyAmount = incomeFrequency === 'weekly' ? rawAmount * 52 / 12
+          : incomeFrequency === 'fortnightly' ? rawAmount * 26 / 12
+          : incomeFrequency === 'quarterly' ? rawAmount / 3
+          : incomeFrequency === 'yearly' ? rawAmount / 12
+          : rawAmount
+
         const { error: incomeError } = await supabase.from('income_entries').insert({
           user_id: user.id,
           household_id: householdId,
           month: currentMonth,
           source: incomeSource,
-          amount: parseFloat(income),
+          amount: Math.round(monthlyAmount * 100) / 100,
           is_recurring: true,
+          pay_frequency: incomeFrequency,
         })
         if (incomeError) {
           console.error('Income save error:', incomeError)
@@ -181,6 +191,8 @@ export default function OnboardingPage() {
           <IncomeStep
             income={income}
             setIncome={setIncome}
+            incomeFrequency={incomeFrequency}
+            setIncomeFrequency={setIncomeFrequency}
             incomeSource={incomeSource}
             setIncomeSource={setIncomeSource}
             onBack={() => setStep('welcome')}
@@ -217,6 +229,7 @@ export default function OnboardingPage() {
         {step === 'complete' && (
           <CompleteStep
             income={income}
+            incomeFrequency={incomeFrequency}
             goalName={goalName}
             goalAmount={goalAmount}
             householdId={householdId}
@@ -301,9 +314,13 @@ function WelcomeStep({
   )
 }
 
+type PayFrequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+
 function IncomeStep({
   income,
   setIncome,
+  incomeFrequency,
+  setIncomeFrequency,
   incomeSource,
   setIncomeSource,
   onBack,
@@ -311,17 +328,26 @@ function IncomeStep({
 }: {
   income: string
   setIncome: (v: string) => void
+  incomeFrequency: PayFrequency
+  setIncomeFrequency: (v: PayFrequency) => void
   incomeSource: string
   setIncomeSource: (v: string) => void
   onBack: () => void
   onNext: () => void
 }) {
   const sources = ['Salary', 'Freelance', 'Business', 'Other']
+  const frequencies: { value: PayFrequency; label: string }[] = [
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'fortnightly', label: 'Fortnightly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'quarterly', label: 'Quarterly' },
+    { value: 'yearly', label: 'Yearly' },
+  ]
 
   return (
     <div>
       <h1 className="font-display text-2xl font-bold text-gray-900 mb-2">
-        What&apos;s your monthly income?
+        What&apos;s your income?
       </h1>
       <p className="text-gray-500 mb-6">
         Enter your take-home pay (after tax). You can add more income sources later.
@@ -329,7 +355,27 @@ function IncomeStep({
 
       <div className="space-y-5 mb-8">
         <div>
-          <label className="label">Amount (after tax)</label>
+          <label className="label">How often are you paid?</label>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4">
+            {frequencies.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setIncomeFrequency(f.value)}
+                className={`px-4 py-2 rounded-full border-2 text-sm font-medium whitespace-nowrap transition-all ${
+                  incomeFrequency === f.value
+                    ? 'border-bloom-500 bg-bloom-50 text-bloom-700'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Amount per {incomeFrequency === 'fortnightly' ? 'fortnight' : incomeFrequency === 'yearly' ? 'year' : incomeFrequency === 'quarterly' ? 'quarter' : incomeFrequency} (after tax)</label>
           <CurrencyInput
             value={income}
             onChange={setIncome}
@@ -516,6 +562,7 @@ function PreJoinedHouseholdStep({
 
 function CompleteStep({
   income,
+  incomeFrequency,
   goalName,
   goalAmount,
   householdId,
@@ -524,6 +571,7 @@ function CompleteStep({
   loading,
 }: {
   income: string
+  incomeFrequency: PayFrequency
   goalName: string
   goalAmount: string
   householdId: string | null
@@ -549,7 +597,7 @@ function CompleteStep({
       <div className="card text-left mb-8">
         {income && (
           <div className="flex items-center justify-between py-3 border-b border-gray-50">
-            <span className="text-gray-600">Monthly Income</span>
+            <span className="text-gray-600 capitalize">{incomeFrequency} Income</span>
             <span className="font-semibold text-sprout-600">{formatCurrency(parseFloat(income))}</span>
           </div>
         )}

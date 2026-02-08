@@ -1489,7 +1489,7 @@ export function BudgetBuilder({
         </div>
       )}
       <button
-        onClick={handleSave}
+        onClick={() => handleSave()}
         disabled={saving}
         className="btn-primary w-full"
       >

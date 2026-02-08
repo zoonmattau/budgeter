@@ -49,7 +49,7 @@ function generateDaysWithEvents(
   const result: DayEvents[] = []
 
   // Build a map of events by date
-  const eventsByDate = new Map<string, { type: 'income' | 'bill'; name: string; amount: number }[]>()
+  const eventsByDate = new Map<string, { type: 'income' | 'bill' | 'expense'; name: string; amount: number }[]>()
 
   // Add income events
   for (const income of incomeEntries) {
@@ -64,6 +64,10 @@ function generateDaysWithEvents(
         payDate = subDays(payDate, 7)
       } else if (income.pay_frequency === 'fortnightly') {
         payDate = subDays(payDate, 14)
+      } else if (income.pay_frequency === 'quarterly') {
+        payDate = new Date(payDate.getFullYear(), payDate.getMonth() - 3, payDate.getDate())
+      } else if (income.pay_frequency === 'yearly') {
+        payDate = new Date(payDate.getFullYear() - 1, payDate.getMonth(), payDate.getDate())
       } else {
         payDate = new Date(payDate.getFullYear(), payDate.getMonth() - 1, payDate.getDate())
       }
@@ -82,6 +86,10 @@ function generateDaysWithEvents(
         payDate = addDays(payDate, 7)
       } else if (income.pay_frequency === 'fortnightly') {
         payDate = addDays(payDate, 14)
+      } else if (income.pay_frequency === 'quarterly') {
+        payDate = new Date(payDate.getFullYear(), payDate.getMonth() + 3, payDate.getDate())
+      } else if (income.pay_frequency === 'yearly') {
+        payDate = new Date(payDate.getFullYear() + 1, payDate.getMonth(), payDate.getDate())
       } else {
         payDate = new Date(payDate.getFullYear(), payDate.getMonth() + 1, payDate.getDate())
       }

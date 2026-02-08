@@ -18,7 +18,7 @@ export interface IncomeEntry {
   source: string
   amount: number
   is_recurring: boolean
-  pay_frequency: 'weekly' | 'fortnightly' | 'monthly' | null
+  pay_frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly' | null
   pay_day: number | null
   next_pay_date: string | null
 }
@@ -50,7 +50,7 @@ interface TimelineOptions {
 
 function getNextPayDate(
   current: Date,
-  payFrequency: 'weekly' | 'fortnightly' | 'monthly',
+  payFrequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly',
   payDay: number
 ): Date {
   const today = startOfDay(current)
@@ -59,10 +59,23 @@ function getNextPayDate(
     // pay_day is 1-31
     const thisMonthPayday = new Date(today.getFullYear(), today.getMonth(), payDay)
     if (isBefore(thisMonthPayday, today) || isSameDay(thisMonthPayday, today)) {
-      // If payday already passed this month, get next month
       return new Date(today.getFullYear(), today.getMonth() + 1, payDay)
     }
     return thisMonthPayday
+  } else if (payFrequency === 'quarterly') {
+    // pay_day is 1-31 (day of month)
+    const thisMonthPayday = new Date(today.getFullYear(), today.getMonth(), payDay)
+    if (isBefore(thisMonthPayday, today) || isSameDay(thisMonthPayday, today)) {
+      return new Date(today.getFullYear(), today.getMonth() + 3, payDay)
+    }
+    return thisMonthPayday
+  } else if (payFrequency === 'yearly') {
+    // pay_day is 1-31 (day of month), use same month
+    const thisYearPayday = new Date(today.getFullYear(), today.getMonth(), payDay)
+    if (isBefore(thisYearPayday, today) || isSameDay(thisYearPayday, today)) {
+      return new Date(today.getFullYear() + 1, today.getMonth(), payDay)
+    }
+    return thisYearPayday
   } else {
     // weekly or fortnightly - pay_day is 0-6 (Sun-Sat)
     const currentDayOfWeek = getDay(today)
@@ -71,8 +84,6 @@ function getNextPayDate(
       daysUntilPayday += 7
     }
     if (daysUntilPayday === 0 && payFrequency === 'fortnightly') {
-      // For fortnightly, we need to track which week we're on
-      // For simplicity, just add 7 days if it's today
       daysUntilPayday = 14
     }
     return addDays(today, daysUntilPayday)
@@ -140,7 +151,7 @@ function addDaysToFrequency(
 
 function addDaysToPayFrequency(
   date: Date,
-  frequency: 'weekly' | 'fortnightly' | 'monthly',
+  frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly',
   payDay: number
 ): Date {
   switch (frequency) {
@@ -150,6 +161,10 @@ function addDaysToPayFrequency(
       return addDays(date, 14)
     case 'monthly':
       return new Date(date.getFullYear(), date.getMonth() + 1, payDay)
+    case 'quarterly':
+      return new Date(date.getFullYear(), date.getMonth() + 3, payDay)
+    case 'yearly':
+      return new Date(date.getFullYear() + 1, date.getMonth(), payDay)
   }
 }
 

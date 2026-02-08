@@ -242,7 +242,7 @@ export function BillsSummary({ bills, debtAccounts = [], recentTransactions = []
                       <CategoryChip
                         name={payment.category.name}
                         color={payment.category.color}
-                        icon={payment.category.icon}
+                        icon={payment.category.icon ?? undefined}
                         size="sm"
                       />
                     ) : (

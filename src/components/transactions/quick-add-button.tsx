@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { DatePicker } from '@/components/ui/date-picker'
+import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import type { Tables } from '@/lib/database.types'
 
 interface QuickAddButtonProps {
@@ -41,9 +42,12 @@ const RECURRING_SUGGESTIONS = [
   { name: 'Insurance', amount: 100, category: 'Insurance' },
 ]
 
-export function QuickAddButton({ expenseCategories, incomeCategories, creditCards = [], investmentAccounts = [], bankAccounts = [] }: QuickAddButtonProps) {
+export function QuickAddButton({ expenseCategories: initialExpenseCategories, incomeCategories: initialIncomeCategories, creditCards = [], investmentAccounts = [], bankAccounts = [] }: QuickAddButtonProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
+  const [showCreateCategory, setShowCreateCategory] = useState(false)
+  const [localExpenseCategories, setLocalExpenseCategories] = useState(initialExpenseCategories)
+  const [localIncomeCategories, setLocalIncomeCategories] = useState(initialIncomeCategories)
   const [transactionType, setTransactionType] = useState<TransactionType>('expense')
   const [selectedCategory, setSelectedCategory] = useState<Tables<'categories'> | null>(null)
   const [incomePreset, setIncomePreset] = useState<string | null>(null)
@@ -64,6 +68,8 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
 
   const supabase = createClient()
 
+  const expenseCategories = localExpenseCategories
+  const incomeCategories = localIncomeCategories
   const categories = transactionType === 'income' ? incomeCategories : expenseCategories
   const isExpense = transactionType === 'expense'
   const isSubscription = transactionType === 'subscription'
@@ -468,7 +474,7 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                 Category {isSubscription && <span className="text-gray-400 font-normal">(optional)</span>}
               </label>
               <div className="grid grid-cols-4 gap-2">
-                {categories.slice(0, 8).map((cat) => (
+                {categories.map((cat) => (
                   <button
                     key={cat.id}
                     type="button"
@@ -488,6 +494,16 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
                     />
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setShowCreateCategory(true)}
+                  className="p-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all flex flex-col items-center justify-center gap-1"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center">
+                    <Plus className="w-4 h-4 text-gray-500" />
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-medium">New</span>
+                </button>
               </div>
             </div>
           )}
@@ -550,33 +566,39 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
               </div>
 
               {/* Income categories */}
-              {incomeCategories.length > 0 && (
-                <>
-                  <p className="text-xs text-gray-400 mb-2">Or select a category:</p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {incomeCategories.slice(0, 4).map((cat) => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => handleCategorySelect(cat)}
-                        className={`p-3 rounded-xl border-2 transition-all ${
-                          selectedCategory?.id === cat.id
-                            ? 'border-sprout-500 bg-sprout-50'
-                            : 'border-transparent bg-gray-50 hover:bg-gray-100'
-                        }`}
-                      >
-                        <CategoryChip
-                          name={cat.name}
-                          color={cat.color}
-                          icon={cat.icon}
-                          size="sm"
-                          showLabel
-                        />
-                      </button>
-                    ))}
+              <p className="text-xs text-gray-400 mb-2">Or select a category:</p>
+              <div className="grid grid-cols-4 gap-2">
+                {incomeCategories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => handleCategorySelect(cat)}
+                    className={`p-3 rounded-xl border-2 transition-all ${
+                      selectedCategory?.id === cat.id
+                        ? 'border-sprout-500 bg-sprout-50'
+                        : 'border-transparent bg-gray-50 hover:bg-gray-100'
+                    }`}
+                  >
+                    <CategoryChip
+                      name={cat.name}
+                      color={cat.color}
+                      icon={cat.icon}
+                      size="sm"
+                      showLabel
+                    />
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setShowCreateCategory(true)}
+                  className="p-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all flex flex-col items-center justify-center gap-1"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center">
+                    <Plus className="w-4 h-4 text-gray-500" />
                   </div>
-                </>
-              )}
+                  <span className="text-[10px] text-gray-500 font-medium">New</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -802,6 +824,21 @@ export function QuickAddButton({ expenseCategories, incomeCategories, creditCard
           </>
         )}
       </div>
+
+      {showCreateCategory && (
+        <CreateCategoryModal
+          type={transactionType === 'income' ? 'income' : 'expense'}
+          onClose={() => setShowCreateCategory(false)}
+          onCreated={(category) => {
+            if (category.type === 'income') {
+              setLocalIncomeCategories(prev => [...prev, category])
+            } else {
+              setLocalExpenseCategories(prev => [...prev, category])
+            }
+            setSelectedCategory(category)
+          }}
+        />
+      )}
 
       <style jsx>{`
         @keyframes slide-up {

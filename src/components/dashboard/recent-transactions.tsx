@@ -13,6 +13,7 @@ import type { HouseholdMember } from '@/lib/scope-context'
 type TransactionWithCategory = Tables<'transactions'> & {
   categories: Tables<'categories'> | null
   profiles?: { display_name: string | null } | null
+  accounts?: { name: string } | null
 }
 
 interface RecentTransactionsProps {
@@ -79,7 +80,9 @@ export function RecentTransactions({
               )}
               <div className="min-w-0">
                 <p className="font-medium text-gray-900 truncate">{transaction.description}</p>
-                <p className="text-xs text-gray-400">{dateText}</p>
+                <p className="text-xs text-gray-400">
+                  {dateText} · {transaction.accounts?.name || 'Cash'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
