@@ -497,7 +497,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
                 Category {isSubscription && <span className="text-gray-400 font-normal">(optional)</span>}
               </label>
               <div className="grid grid-cols-4 gap-2">
-                {categories.map((cat) => (
+                {categories.slice(0, 11).map((cat) => (
                   <button
                     key={cat.id}
                     type="button"
