@@ -276,12 +276,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
 
-  // Deduplicate household budgets by category_id (keep most recent per category)
+  // For household budgets: deduplicate by category NAME (not ID) since each member
+  // has their own categories with different IDs. Keep the most recent per name.
   const deduplicatedBudgets = scope === 'household'
     ? Object.values(
         (budgets || []).reduce((acc, b) => {
-          if (!acc[b.category_id] || b.updated_at > acc[b.category_id].updated_at) {
-            acc[b.category_id] = b
+          const catName = b.categories?.name?.toLowerCase() || b.category_id
+          if (!acc[catName] || b.updated_at > acc[catName].updated_at) {
+            acc[catName] = b
           }
           return acc
         }, {} as Record<string, NonNullable<typeof budgets>[0]>)

@@ -99,7 +99,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
     scope === 'household' && householdId
       ? supabase
           .from('budgets')
-          .select('*')
+          .select('*, categories(name)')
           .eq('household_id', householdId)
           .eq('month', currentMonth)
       : supabase
@@ -197,16 +197,35 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .maybeSingle(),
   ])
 
-  // Deduplicate household budgets by category_id (keep most recent per category)
+  // For household budgets: deduplicate by category NAME (not ID) since each member
+  // has their own categories with different IDs, then remap to current user's category IDs.
   const deduplicatedBudgets = scope === 'household'
-    ? Object.values(
-        (budgets || []).reduce((acc, b) => {
-          if (!acc[b.category_id] || b.updated_at > acc[b.category_id].updated_at) {
-            acc[b.category_id] = b
+    ? (() => {
+        // Map current user's category name → ID
+        const userCatByName: Record<string, string> = {}
+        for (const c of categories || []) {
+          userCatByName[c.name.toLowerCase()] = c.id
+        }
+        // Deduplicate by category name, keep most recent
+        const byName: Record<string, NonNullable<typeof budgets>[0]> = {}
+        for (const b of budgets || []) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const catName = (b as any).categories?.name?.toLowerCase() as string | undefined
+          if (!catName) continue
+          if (!byName[catName] || b.updated_at > byName[catName].updated_at) {
+            byName[catName] = b
           }
-          return acc
-        }, {} as Record<string, NonNullable<typeof budgets>[0]>)
-      )
+        }
+        // Remap to current user's category IDs
+        return Object.entries(byName)
+          .filter(([name]) => userCatByName[name])
+          .map(([name, b]) => {
+            const userCatId = userCatByName[name]
+            return userCatId !== b.category_id
+              ? Object.assign({}, b, { category_id: userCatId })
+              : b
+          })
+      })()
     : budgets || []
 
   // Filter out Interest and Other categories, then sort with rent/mortgage at the top
