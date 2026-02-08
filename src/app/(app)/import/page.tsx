@@ -1,732 +1,779 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
   Upload,
   FileText,
-  Sparkles,
   CheckCircle2,
   AlertCircle,
-  TrendingUp,
-  TrendingDown,
-  Plus,
   Loader2,
-  RefreshCw,
-  Lightbulb,
-  Calendar
+  ChevronDown,
+  X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
+import type { Tables } from '@/lib/database.types'
 
-interface Transaction {
+// --- Types ---
+
+type ColumnRole = 'date' | 'description' | 'amount' | 'debit' | 'credit' | 'skip'
+
+interface ParsedRow {
+  raw: string[]
   date: string
   description: string
   amount: number
   type: 'expense' | 'income'
-  suggested_category: string
-  is_recurring: boolean
-  recurring_frequency: string | null
-  merchant: string
-}
-
-interface RecurringBill {
-  name: string
-  amount: number
-  frequency: string
-  typical_day: number
   category: string
 }
 
-interface SpendingCategory {
-  category: string
-  amount: number
-  percentage: number
+// --- CSV Parsing ---
+
+function detectDelimiter(text: string): string {
+  const firstLines = text.split('\n').slice(0, 5).join('\n')
+  const tabCount = (firstLines.match(/\t/g) || []).length
+  const semiCount = (firstLines.match(/;/g) || []).length
+  const commaCount = (firstLines.match(/,/g) || []).length
+  if (tabCount > commaCount && tabCount > semiCount) return '\t'
+  if (semiCount > commaCount) return ';'
+  return ','
 }
 
-interface Analysis {
-  transactions: Transaction[]
-  recurring_bills: RecurringBill[]
-  insights: {
-    total_income: number
-    total_expenses: number
-    top_spending_categories: SpendingCategory[]
-    savings_rate: number
-    recommendations: string[]
+function splitCSVLine(line: string, delimiter: string): string[] {
+  const fields: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"'
+          i++ // skip escaped quote
+        } else {
+          inQuotes = false
+        }
+      } else {
+        current += ch
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true
+      } else if (ch === delimiter) {
+        fields.push(current.trim())
+        current = ''
+      } else {
+        current += ch
+      }
+    }
   }
+  fields.push(current.trim())
+  return fields
 }
+
+function parseCSVText(text: string): { headers: string[]; rows: string[][] } {
+  const delimiter = detectDelimiter(text)
+  const lines = text
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+
+  if (lines.length === 0) return { headers: [], rows: [] }
+
+  const allRows = lines.map(l => splitCSVLine(l, delimiter))
+  // Detect if first row is a header
+  const firstRow = allRows[0]
+  const isHeader = firstRow.some(cell => {
+    const lower = cell.toLowerCase().replace(/[^a-z ]/g, '').trim()
+    return HEADER_PATTERNS.some(p => p.names.includes(lower))
+  })
+
+  if (isHeader) {
+    return { headers: firstRow, rows: allRows.slice(1) }
+  }
+  // Generate synthetic headers
+  const headers = firstRow.map((_, i) => `Column ${i + 1}`)
+  return { headers, rows: allRows }
+}
+
+// --- Header Detection ---
+
+const HEADER_PATTERNS: { role: ColumnRole; names: string[] }[] = [
+  { role: 'date', names: ['date', 'trans date', 'transaction date', 'posting date', 'value date', 'effective date'] },
+  { role: 'description', names: ['description', 'narrative', 'details', 'memo', 'merchant', 'payee', 'particulars', 'reference', 'transaction description'] },
+  { role: 'amount', names: ['amount', 'value', 'sum', 'total'] },
+  { role: 'debit', names: ['debit', 'debit amount', 'withdrawal', 'money out'] },
+  { role: 'credit', names: ['credit', 'credit amount', 'deposit', 'money in'] },
+]
+
+function autoDetectColumns(headers: string[]): ColumnRole[] {
+  return headers.map(h => {
+    const lower = h.toLowerCase().replace(/[^a-z ]/g, '').trim()
+    for (const pattern of HEADER_PATTERNS) {
+      if (pattern.names.includes(lower)) return pattern.role
+    }
+    return 'skip'
+  })
+}
+
+// --- Date parsing ---
+
+function parseDate(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  // Try ISO format first (yyyy-mm-dd)
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const d = new Date(trimmed.slice(0, 10))
+    if (!isNaN(d.getTime())) return trimmed.slice(0, 10)
+  }
+
+  // dd/mm/yyyy or dd-mm-yyyy
+  const dmy = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/)
+  if (dmy) {
+    const day = parseInt(dmy[1])
+    const month = parseInt(dmy[2])
+    let year = parseInt(dmy[3])
+    if (year < 100) year += 2000
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const d = new Date(year, month - 1, day)
+      if (!isNaN(d.getTime())) {
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      }
+    }
+  }
+
+  // mm/dd/yyyy - try if day > 12 didn't match above (ambiguous case: default dd/mm)
+  // We default to dd/mm/yyyy for Australian bank formats
+
+  // Fallback: let JS parse it
+  const d = new Date(trimmed)
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().slice(0, 10)
+  }
+
+  return null
+}
+
+function parseAmount(raw: string): number {
+  // Remove currency symbols, spaces, and thousand separators
+  const cleaned = raw.replace(/[^0-9.\-+(),]/g, '')
+  // Handle parentheses as negative: (100.00) => -100.00
+  if (cleaned.startsWith('(') && cleaned.endsWith(')')) {
+    return -Math.abs(parseFloat(cleaned.replace(/[()]/g, '')) || 0)
+  }
+  return parseFloat(cleaned) || 0
+}
+
+// --- Component ---
 
 export default function ImportPage() {
-  const [mode, setMode] = useState<'upload' | 'paste' | 'scan'>('upload')
+  const [step, setStep] = useState<'upload' | 'map' | 'done'>('upload')
+  const [inputMode, setInputMode] = useState<'upload' | 'paste'>('upload')
   const [file, setFile] = useState<File | null>(null)
   const [pastedText, setPastedText] = useState('')
   const [isDragging, setIsDragging] = useState(false)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [scanning, setScanning] = useState(false)
-  const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [scanResults, setScanResults] = useState<{
-    suggested_bills: Array<{
-      name: string
-      amount: number
-      frequency: string
-      typical_day: number
-      category: string
-      confidence: string
-      evidence: string
-    }>
-    spending_patterns: Array<{
-      pattern: string
-      insight: string
-      suggestion: string
-    }>
-  } | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Parsed CSV state
+  const [headers, setHeaders] = useState<string[]>([])
+  const [rows, setRows] = useState<string[][]>([])
+  const [columnRoles, setColumnRoles] = useState<ColumnRole[]>([])
+
+  // Transactions & categories
+  const [transactions, setTransactions] = useState<ParsedRow[]>([])
+  const [categories, setCategories] = useState<Tables<'categories'>[]>([])
+  const [defaultCategory, setDefaultCategory] = useState('')
+
+  // Import state
   const [importing, setImporting] = useState(false)
   const [importedCount, setImportedCount] = useState(0)
-  const [createdBills, setCreatedBills] = useState<string[]>([])
 
   const supabase = createClient()
 
-  async function handleAnalyze() {
-    if (!file && !pastedText) {
-      setError('Please upload a file or paste your statement data')
+  // Load user categories on mount
+  useEffect(() => {
+    async function loadCategories() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('name')
+      if (data) {
+        setCategories(data)
+        // Default to first expense category
+        const first = data.find(c => c.type === 'expense')
+        if (first) setDefaultCategory(first.name)
+      }
+    }
+    loadCategories()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Build transactions from parsed rows whenever column mapping changes
+  const buildTransactions = useCallback(() => {
+    const dateIdx = columnRoles.indexOf('date')
+    const descIdx = columnRoles.indexOf('description')
+    const amountIdx = columnRoles.indexOf('amount')
+    const debitIdx = columnRoles.indexOf('debit')
+    const creditIdx = columnRoles.indexOf('credit')
+
+    if (dateIdx === -1 || descIdx === -1 || (amountIdx === -1 && debitIdx === -1 && creditIdx === -1)) {
       return
     }
 
-    setAnalyzing(true)
-    setError(null)
+    const parsed: ParsedRow[] = []
+    for (const row of rows) {
+      const dateStr = parseDate(row[dateIdx] || '')
+      if (!dateStr) continue
 
-    try {
-      const formData = new FormData()
-      if (file) {
-        formData.append('file', file)
-      }
-      if (pastedText) {
-        formData.append('text', pastedText)
-      }
+      const desc = (row[descIdx] || '').trim()
+      if (!desc) continue
 
-      const response = await fetch('/api/analyze-statement', {
-        method: 'POST',
-        body: formData,
-      })
+      let amount: number
+      let type: 'expense' | 'income'
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to analyse statement')
-      }
-
-      if (data.error) {
-        throw new Error(data.error)
-      }
-
-      setAnalysis(data)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to analyse statement'
-      setError(message)
-    } finally {
-      setAnalyzing(false)
-    }
-  }
-
-  async function handleScanPatterns() {
-    setScanning(true)
-    setError(null)
-
-    try {
-      const response = await fetch('/api/detect-patterns', {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to scan patterns')
-      }
-
-      const data = await response.json()
-      if (data.error) {
-        setError(data.error)
+      if (amountIdx !== -1) {
+        amount = parseAmount(row[amountIdx] || '0')
+        type = amount >= 0 ? 'income' : 'expense'
       } else {
-        setScanResults(data)
-      }
-    } catch {
-      setError('Failed to scan for patterns. Please try again.')
-    } finally {
-      setScanning(false)
-    }
-  }
-
-  async function handleImportTransactions() {
-    if (!analysis) return
-
-    setImporting(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    // Get or create categories
-    const { data: existingCategories } = await supabase
-      .from('categories')
-      .select('id, name')
-      .eq('user_id', user.id)
-
-    const categoryMap = new Map(existingCategories?.map(c => [c.name.toLowerCase(), c.id]) || [])
-
-    let imported = 0
-
-    for (const tx of analysis.transactions) {
-      // Find or create category
-      let categoryId = categoryMap.get(tx.suggested_category.toLowerCase())
-
-      if (!categoryId) {
-        const { data: newCat } = await supabase
-          .from('categories')
-          .insert({
-            user_id: user.id,
-            name: tx.suggested_category,
-            icon: 'tag',
-            color: '#6366f1',
-            type: tx.type,
-          })
-          .select()
-          .single()
-
-        if (newCat) {
-          categoryId = newCat.id
-          categoryMap.set(tx.suggested_category.toLowerCase(), newCat.id)
+        const debit = debitIdx !== -1 ? parseAmount(row[debitIdx] || '0') : 0
+        const credit = creditIdx !== -1 ? parseAmount(row[creditIdx] || '0') : 0
+        if (Math.abs(debit) > 0) {
+          amount = -Math.abs(debit)
+          type = 'expense'
+        } else {
+          amount = Math.abs(credit)
+          type = 'income'
         }
       }
 
-      if (categoryId) {
-        const { error } = await supabase.from('transactions').insert({
-          user_id: user.id,
-          category_id: categoryId,
-          amount: Math.abs(tx.amount),
-          type: tx.type,
-          description: tx.merchant || tx.description,
-          date: tx.date,
-        })
+      parsed.push({
+        raw: row,
+        date: dateStr,
+        description: desc,
+        amount: Math.abs(amount),
+        type,
+        category: defaultCategory,
+      })
+    }
+    setTransactions(parsed)
+  }, [rows, columnRoles, defaultCategory])
 
-        if (!error) imported++
+  useEffect(() => {
+    if (rows.length > 0 && columnRoles.length > 0) {
+      buildTransactions()
+    }
+  }, [rows, columnRoles, buildTransactions])
+
+  // --- Handlers ---
+
+  async function handleParseCSV() {
+    let text = ''
+    if (file) {
+      text = await file.text()
+    } else if (pastedText) {
+      text = pastedText
+    }
+
+    if (!text.trim()) {
+      setError('No data provided')
+      return
+    }
+
+    setError(null)
+    const { headers: h, rows: r } = parseCSVText(text)
+
+    if (r.length === 0) {
+      setError('No data rows found in the file')
+      return
+    }
+
+    setHeaders(h)
+    setRows(r)
+
+    const roles = autoDetectColumns(h)
+    setColumnRoles(roles)
+    setStep('map')
+  }
+
+  function setColumnRole(index: number, role: ColumnRole) {
+    setColumnRoles(prev => {
+      const updated = [...prev]
+      // If assigning a unique role (date/description/amount), unset it from other columns
+      if (role !== 'skip') {
+        for (let i = 0; i < updated.length; i++) {
+          if (updated[i] === role && i !== index) {
+            // Allow multiple 'skip' but unique for others
+            // debit/credit can coexist, but date/description/amount are unique
+            if (role === 'date' || role === 'description' || role === 'amount') {
+              updated[i] = 'skip'
+            }
+          }
+        }
       }
-    }
-
-    setImportedCount(imported)
-    setImporting(false)
-  }
-
-  async function handleCreateBill(bill: RecurringBill | { name: string; amount: number; frequency: string; typical_day: number; category: string }) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    // Get or create category
-    const { data: existingCategories } = await supabase
-      .from('categories')
-      .select('id, name')
-      .eq('user_id', user.id)
-
-    let categoryId = existingCategories?.find(c => c.name.toLowerCase() === bill.category.toLowerCase())?.id
-
-    if (!categoryId) {
-      const { data: newCat } = await supabase
-        .from('categories')
-        .insert({
-          user_id: user.id,
-          name: bill.category,
-          icon: 'receipt',
-          color: '#f59e0b',
-          type: 'expense',
-        })
-        .select()
-        .single()
-
-      categoryId = newCat?.id
-    }
-
-    if (!categoryId) return
-
-    // Calculate next due date
-    const today = new Date()
-    const nextDue = new Date(today.getFullYear(), today.getMonth(), bill.typical_day)
-    if (nextDue <= today) {
-      nextDue.setMonth(nextDue.getMonth() + 1)
-    }
-
-    const { error } = await supabase.from('bills').insert({
-      user_id: user.id,
-      category_id: categoryId,
-      name: bill.name,
-      amount: bill.amount,
-      frequency: bill.frequency as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly',
-      due_day: bill.typical_day,
-      next_due: nextDue.toISOString().split('T')[0],
-      is_active: true,
+      updated[index] = role
+      return updated
     })
+  }
 
-    if (!error) {
-      setCreatedBills(prev => [...prev, bill.name])
+  function setTransactionCategory(index: number, category: string) {
+    setTransactions(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], category }
+      return updated
+    })
+  }
+
+  function setTransactionType(index: number, type: 'expense' | 'income') {
+    setTransactions(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], type }
+      return updated
+    })
+  }
+
+  function applyDefaultCategory(cat: string) {
+    setDefaultCategory(cat)
+    setTransactions(prev => prev.map(tx => ({ ...tx, category: cat })))
+  }
+
+  async function handleImport() {
+    if (transactions.length === 0) return
+
+    setImporting(true)
+    setError(null)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('Not authenticated')
+        setImporting(false)
+        return
+      }
+
+      // Build category map
+      const { data: existingCategories } = await supabase
+        .from('categories')
+        .select('id, name, type')
+        .eq('user_id', user.id)
+
+      const categoryMap = new Map(
+        existingCategories?.map(c => [c.name.toLowerCase(), c.id]) || []
+      )
+
+      let imported = 0
+
+      for (const tx of transactions) {
+        let categoryId = categoryMap.get(tx.category.toLowerCase())
+
+        if (!categoryId) {
+          const { data: newCat } = await supabase
+            .from('categories')
+            .insert({
+              user_id: user.id,
+              name: tx.category,
+              icon: 'tag',
+              color: '#6366f1',
+              type: tx.type,
+            })
+            .select()
+            .single()
+
+          if (newCat) {
+            categoryId = newCat.id
+            categoryMap.set(tx.category.toLowerCase(), newCat.id)
+          }
+        }
+
+        if (categoryId) {
+          const { error: insertError } = await supabase.from('transactions').insert({
+            user_id: user.id,
+            category_id: categoryId,
+            amount: tx.amount,
+            type: tx.type,
+            description: tx.description,
+            date: tx.date,
+          })
+          if (!insertError) imported++
+        }
+      }
+
+      setImportedCount(imported)
+      setStep('done')
+    } catch {
+      setError('An error occurred during import. Please try again.')
+    } finally {
+      setImporting(false)
     }
   }
+
+  // --- Validation ---
+
+  const hasDateColumn = columnRoles.includes('date')
+  const hasDescColumn = columnRoles.includes('description')
+  const hasAmountColumn = columnRoles.includes('amount') || columnRoles.includes('debit') || columnRoles.includes('credit')
+  const mappingValid = hasDateColumn && hasDescColumn && hasAmountColumn
+
+  // --- Render ---
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors">
           <ArrowLeft className="w-5 h-5 text-gray-500" />
         </Link>
         <div>
-          <h1 className="font-display text-2xl font-bold text-gray-900">Smart Import</h1>
-          <p className="text-sm text-gray-500">Let us analyse your spending</p>
+          <h1 className="font-display text-2xl font-bold text-gray-900">Import Transactions</h1>
+          <p className="text-sm text-gray-500">Upload a CSV from your bank</p>
         </div>
       </div>
 
-      {/* Mode Selection */}
-      {!analysis && !scanResults && (
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            onClick={() => setMode('upload')}
-            className={`p-3 rounded-xl border-2 text-center transition-all ${
-              mode === 'upload'
-                ? 'border-bloom-500 bg-bloom-50'
-                : 'border-gray-100 hover:border-gray-200'
-            }`}
-          >
-            <Upload className={`w-5 h-5 mx-auto mb-1 ${mode === 'upload' ? 'text-bloom-600' : 'text-gray-400'}`} />
-            <p className="text-xs font-medium">Upload File</p>
-          </button>
-          <button
-            onClick={() => setMode('paste')}
-            className={`p-3 rounded-xl border-2 text-center transition-all ${
-              mode === 'paste'
-                ? 'border-bloom-500 bg-bloom-50'
-                : 'border-gray-100 hover:border-gray-200'
-            }`}
-          >
-            <FileText className={`w-5 h-5 mx-auto mb-1 ${mode === 'paste' ? 'text-bloom-600' : 'text-gray-400'}`} />
-            <p className="text-xs font-medium">Paste Data</p>
-          </button>
-          <button
-            onClick={() => setMode('scan')}
-            className={`p-3 rounded-xl border-2 text-center transition-all ${
-              mode === 'scan'
-                ? 'border-bloom-500 bg-bloom-50'
-                : 'border-gray-100 hover:border-gray-200'
-            }`}
-          >
-            <Sparkles className={`w-5 h-5 mx-auto mb-1 ${mode === 'scan' ? 'text-bloom-600' : 'text-gray-400'}`} />
-            <p className="text-xs font-medium">Scan Patterns</p>
-          </button>
-        </div>
-      )}
-
       {error && (
         <div className="p-4 bg-red-50 rounded-xl flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
           <p className="text-sm text-red-700">{error}</p>
         </div>
       )}
 
-      {/* Upload Mode */}
-      {mode === 'upload' && !analysis && (
-        <div className="card">
-          <div
-            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-              isDragging
-                ? 'border-bloom-500 bg-bloom-50'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-            onDragOver={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              setIsDragging(true)
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              setIsDragging(false)
-            }}
-            onDrop={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              setIsDragging(false)
-              const droppedFile = e.dataTransfer.files[0]
-              if (droppedFile && (droppedFile.name.endsWith('.csv') || droppedFile.name.endsWith('.txt'))) {
-                setFile(droppedFile)
-              } else {
-                setError('Please upload a CSV or TXT file')
-              }
-            }}
-          >
-            <input
-              type="file"
-              accept=".csv,.txt"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="hidden"
-              id="file-upload"
-            />
-            <label htmlFor="file-upload" className="cursor-pointer block">
-              {file ? (
-                <>
-                  <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-sprout-500" />
-                  <p className="font-medium text-sprout-700">{file.name}</p>
-                  <p className="text-sm text-gray-400 mt-1">Ready to analyse</p>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setFile(null)
-                    }}
-                    className="text-xs text-gray-400 hover:text-gray-600 mt-2 underline"
-                  >
-                    Remove file
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Upload className={`w-10 h-10 mx-auto mb-3 ${isDragging ? 'text-bloom-500' : 'text-gray-400'}`} />
-                  <p className="font-medium text-gray-700">
-                    {isDragging ? 'Drop file here' : 'Drop your bank statement here'}
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">CSV or TXT format, or click to browse</p>
-                </>
-              )}
-            </label>
+      {/* ====== STEP 1: Upload ====== */}
+      {step === 'upload' && (
+        <>
+          {/* Mode tabs */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setInputMode('upload')}
+              className={`p-3 rounded-xl border-2 text-center transition-all ${
+                inputMode === 'upload'
+                  ? 'border-bloom-500 bg-bloom-50'
+                  : 'border-gray-100 hover:border-gray-200'
+              }`}
+            >
+              <Upload className={`w-5 h-5 mx-auto mb-1 ${inputMode === 'upload' ? 'text-bloom-600' : 'text-gray-400'}`} />
+              <p className="text-xs font-medium">Upload File</p>
+            </button>
+            <button
+              onClick={() => setInputMode('paste')}
+              className={`p-3 rounded-xl border-2 text-center transition-all ${
+                inputMode === 'paste'
+                  ? 'border-bloom-500 bg-bloom-50'
+                  : 'border-gray-100 hover:border-gray-200'
+              }`}
+            >
+              <FileText className={`w-5 h-5 mx-auto mb-1 ${inputMode === 'paste' ? 'text-bloom-600' : 'text-gray-400'}`} />
+              <p className="text-xs font-medium">Paste Data</p>
+            </button>
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={!file || analyzing}
-            className="btn-primary w-full mt-4"
-          >
-            {analyzing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Analysing...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Analyse Statement
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Paste Mode */}
-      {mode === 'paste' && !analysis && (
-        <div className="card">
-          <p className="text-sm text-gray-500 mb-3">
-            Paste your bank statement data below (copy from your bank&apos;s website or statement)
-          </p>
-          <textarea
-            value={pastedText}
-            onChange={(e) => setPastedText(e.target.value)}
-            placeholder="01/01/2024  NETFLIX  -15.99&#10;02/01/2024  SALARY  +3500.00&#10;..."
-            className="input min-h-[200px] font-mono text-sm"
-          />
-
-          <button
-            onClick={handleAnalyze}
-            disabled={!pastedText || analyzing}
-            className="btn-primary w-full mt-4"
-          >
-            {analyzing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Analysing...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Analyse Data
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Scan Mode */}
-      {mode === 'scan' && !scanResults && (
-        <div className="card text-center py-8">
-          <RefreshCw className="w-12 h-12 text-bloom-400 mx-auto mb-4" />
-          <h3 className="font-display font-semibold text-gray-900 mb-2">
-            Scan Your Transactions
-          </h3>
-          <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto">
-            We&apos;ll analyse your existing transactions to find recurring bills and spending patterns
-          </p>
-          <button
-            onClick={handleScanPatterns}
-            disabled={scanning}
-            className="btn-primary"
-          >
-            {scanning ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Scanning...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Start Scan
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Scan Results */}
-      {scanResults && (
-        <div className="space-y-6">
-          <button
-            onClick={() => setScanResults(null)}
-            className="text-sm text-bloom-600 hover:text-bloom-700"
-          >
-            ← Back to scan options
-          </button>
-
-          {/* Suggested Bills */}
-          {scanResults.suggested_bills.length > 0 && (
+          {/* Upload area */}
+          {inputMode === 'upload' && (
             <div className="card">
-              <div className="flex items-center gap-2 mb-4">
-                <Calendar className="w-5 h-5 text-bloom-500" />
-                <h3 className="font-semibold text-gray-900">Suggested Bills</h3>
-              </div>
-              <p className="text-sm text-gray-500 mb-4">
-                We found these recurring payments in your transactions
-              </p>
-
-              <div className="space-y-3">
-                {scanResults.suggested_bills.map((bill, i) => (
-                  <div key={i} className="p-4 bg-gray-50 rounded-xl">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <p className="font-medium text-gray-900">{bill.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {formatCurrency(bill.amount)} • {bill.frequency} • Day {bill.typical_day}
-                        </p>
-                      </div>
-                      {createdBills.includes(bill.name) ? (
-                        <span className="text-xs bg-sprout-100 text-sprout-700 px-2 py-1 rounded-full flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Added
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleCreateBill(bill)}
-                          className="text-xs bg-bloom-100 text-bloom-700 px-3 py-1.5 rounded-full hover:bg-bloom-200 transition-colors flex items-center gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Add Bill
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400">{bill.evidence}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      bill.confidence === 'high' ? 'bg-sprout-100 text-sprout-700' :
-                      bill.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {bill.confidence} confidence
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Spending Patterns */}
-          {scanResults.spending_patterns.length > 0 && (
-            <div className="card">
-              <div className="flex items-center gap-2 mb-4">
-                <Lightbulb className="w-5 h-5 text-amber-500" />
-                <h3 className="font-semibold text-gray-900">Spending Insights</h3>
-              </div>
-
-              <div className="space-y-4">
-                {scanResults.spending_patterns.map((pattern, i) => (
-                  <div key={i} className="p-4 bg-amber-50 rounded-xl">
-                    <p className="font-medium text-gray-900 mb-1">{pattern.pattern}</p>
-                    <p className="text-sm text-gray-600 mb-2">{pattern.insight}</p>
-                    <p className="text-sm text-amber-700 font-medium">💡 {pattern.suggestion}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {scanResults.suggested_bills.length === 0 && scanResults.spending_patterns.length === 0 && (
-            <div className="card text-center py-8">
-              <p className="text-gray-500">No patterns found. Add more transactions to get insights.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Analysis Results */}
-      {analysis && (
-        <div className="space-y-6">
-          <button
-            onClick={() => setAnalysis(null)}
-            className="text-sm text-bloom-600 hover:text-bloom-700"
-          >
-            ← Analyse another statement
-          </button>
-
-          {/* Summary Card */}
-          <div className="card bg-gradient-to-br from-bloom-50 to-sprout-50">
-            <h3 className="font-semibold text-gray-900 mb-4">Summary</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center gap-1.5 text-sprout-600 mb-1">
-                  <TrendingUp className="w-4 h-4" />
-                  <span className="text-xs font-medium">Income</span>
-                </div>
-                <p className="text-xl font-bold text-gray-900">
-                  {formatCurrency(analysis.insights.total_income)}
-                </p>
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5 text-red-500 mb-1">
-                  <TrendingDown className="w-4 h-4" />
-                  <span className="text-xs font-medium">Expenses</span>
-                </div>
-                <p className="text-xl font-bold text-gray-900">
-                  {formatCurrency(analysis.insights.total_expenses)}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-200/50">
-              <p className="text-sm text-gray-600">
-                Savings rate: <span className="font-semibold text-sprout-600">{analysis.insights.savings_rate.toFixed(1)}%</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Top Categories */}
-          {analysis.insights.top_spending_categories.length > 0 && (
-            <div className="card">
-              <h3 className="font-semibold text-gray-900 mb-4">Top Spending Categories</h3>
-              <div className="space-y-3">
-                {analysis.insights.top_spending_categories.map((cat, i) => (
-                  <div key={i}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-700">{cat.category}</span>
-                      <span className="font-medium text-gray-900">{formatCurrency(cat.amount)}</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-bloom-500 rounded-full"
-                        style={{ width: `${cat.percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recommendations */}
-          {analysis.insights.recommendations.length > 0 && (
-            <div className="card">
-              <div className="flex items-center gap-2 mb-4">
-                <Lightbulb className="w-5 h-5 text-amber-500" />
-                <h3 className="font-semibold text-gray-900">Recommendations</h3>
-              </div>
-              <div className="space-y-3">
-                {analysis.insights.recommendations.map((rec, i) => (
-                  <div key={i} className="p-3 bg-amber-50 rounded-xl text-sm text-amber-800">
-                    {rec}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Detected Recurring Bills */}
-          {analysis.recurring_bills.length > 0 && (
-            <div className="card">
-              <div className="flex items-center gap-2 mb-4">
-                <Calendar className="w-5 h-5 text-bloom-500" />
-                <h3 className="font-semibold text-gray-900">Detected Bills</h3>
-              </div>
-              <p className="text-sm text-gray-500 mb-4">
-                We found these recurring payments. Add them as bills to track them.
-              </p>
-
-              <div className="space-y-2">
-                {analysis.recurring_bills.map((bill, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                    <div>
-                      <p className="font-medium text-gray-900">{bill.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {formatCurrency(bill.amount)} • {bill.frequency} • Day {bill.typical_day}
-                      </p>
-                    </div>
-                    {createdBills.includes(bill.name) ? (
-                      <span className="text-xs bg-sprout-100 text-sprout-700 px-2 py-1 rounded-full flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Added
-                      </span>
-                    ) : (
+              <div
+                className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                  isDragging
+                    ? 'border-bloom-500 bg-bloom-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true) }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false) }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setIsDragging(false)
+                  const droppedFile = e.dataTransfer.files[0]
+                  if (droppedFile && (droppedFile.name.endsWith('.csv') || droppedFile.name.endsWith('.txt'))) {
+                    setFile(droppedFile)
+                    setError(null)
+                  } else {
+                    setError('Please upload a CSV or TXT file')
+                  }
+                }}
+              >
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={(e) => { setFile(e.target.files?.[0] || null); setError(null) }}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer block">
+                  {file ? (
+                    <>
+                      <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-sprout-500" />
+                      <p className="font-medium text-sprout-700">{file.name}</p>
+                      <p className="text-sm text-gray-400 mt-1">Ready to parse</p>
                       <button
-                        onClick={() => handleCreateBill(bill)}
-                        className="text-xs bg-bloom-100 text-bloom-700 px-3 py-1.5 rounded-full hover:bg-bloom-200 transition-colors"
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setFile(null) }}
+                        className="text-xs text-gray-400 hover:text-gray-600 mt-2 underline"
                       >
-                        Add Bill
+                        Remove file
                       </button>
-                    )}
-                  </div>
-                ))}
+                    </>
+                  ) : (
+                    <>
+                      <Upload className={`w-10 h-10 mx-auto mb-3 ${isDragging ? 'text-bloom-500' : 'text-gray-400'}`} />
+                      <p className="font-medium text-gray-700">
+                        {isDragging ? 'Drop file here' : 'Drop your bank statement here'}
+                      </p>
+                      <p className="text-sm text-gray-400 mt-1">CSV or TXT format, or click to browse</p>
+                    </>
+                  )}
+                </label>
               </div>
+
+              <button
+                onClick={handleParseCSV}
+                disabled={!file}
+                className="btn-primary w-full mt-4"
+              >
+                <FileText className="w-4 h-4" />
+                Parse CSV
+              </button>
             </div>
           )}
 
-          {/* Transactions */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900">
-                Transactions ({analysis.transactions.length})
-              </h3>
-              {importedCount > 0 ? (
-                <span className="text-xs bg-sprout-100 text-sprout-700 px-2 py-1 rounded-full flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  {importedCount} imported
-                </span>
-              ) : (
-                <button
-                  onClick={handleImportTransactions}
-                  disabled={importing}
-                  className="text-xs bg-bloom-100 text-bloom-700 px-3 py-1.5 rounded-full hover:bg-bloom-200 transition-colors"
-                >
-                  {importing ? 'Importing...' : 'Import All'}
-                </button>
-              )}
+          {/* Paste area */}
+          {inputMode === 'paste' && (
+            <div className="card">
+              <p className="text-sm text-gray-500 mb-3">
+                Paste your bank statement data below (CSV, tab-separated, or semicolon-separated)
+              </p>
+              <textarea
+                value={pastedText}
+                onChange={(e) => setPastedText(e.target.value)}
+                placeholder={"Date,Description,Amount\n01/01/2024,NETFLIX,-15.99\n02/01/2024,SALARY,3500.00"}
+                className="input min-h-[200px] font-mono text-sm"
+              />
+              <button
+                onClick={handleParseCSV}
+                disabled={!pastedText.trim()}
+                className="btn-primary w-full mt-4"
+              >
+                <FileText className="w-4 h-4" />
+                Parse Data
+              </button>
             </div>
+          )}
+        </>
+      )}
 
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
-              {analysis.transactions.slice(0, 20).map((tx, i) => (
-                <div key={i} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{tx.merchant}</p>
-                    <p className="text-xs text-gray-400">{tx.date} • {tx.suggested_category}</p>
-                  </div>
-                  <span className={`text-sm font-medium ${tx.type === 'income' ? 'text-sprout-600' : 'text-gray-900'}`}>
-                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+      {/* ====== STEP 2: Map & Preview ====== */}
+      {step === 'map' && (
+        <div className="space-y-6">
+          <button
+            onClick={() => { setStep('upload'); setTransactions([]); setHeaders([]); setRows([]) }}
+            className="text-sm text-bloom-600 hover:text-bloom-700"
+          >
+            &larr; Back to upload
+          </button>
+
+          {/* Column Mapping */}
+          <div className="card">
+            <h3 className="font-semibold text-gray-900 mb-3">Map Columns</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Assign each column to a field. You need at least Date, Description, and Amount (or Debit/Credit).
+            </p>
+
+            <div className="space-y-2">
+              {headers.map((header, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="text-sm text-gray-700 w-40 truncate flex-shrink-0" title={header}>
+                    {header}
                   </span>
+                  <div className="relative flex-1">
+                    <select
+                      value={columnRoles[i] || 'skip'}
+                      onChange={(e) => setColumnRole(i, e.target.value as ColumnRole)}
+                      className="input pr-8 text-sm appearance-none"
+                    >
+                      <option value="skip">Skip</option>
+                      <option value="date">Date</option>
+                      <option value="description">Description</option>
+                      <option value="amount">Amount (+/-)</option>
+                      <option value="debit">Debit (expense)</option>
+                      <option value="credit">Credit (income)</option>
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
               ))}
-              {analysis.transactions.length > 20 && (
-                <p className="text-xs text-gray-400 text-center py-2">
-                  And {analysis.transactions.length - 20} more transactions...
-                </p>
-              )}
             </div>
+
+            {!mappingValid && (
+              <p className="text-xs text-amber-600 mt-3">
+                Please map Date, Description, and at least one of Amount / Debit / Credit.
+              </p>
+            )}
           </div>
 
-          <Link href="/dashboard" className="btn-primary w-full">
-            Done
-          </Link>
+          {/* Default Category */}
+          {mappingValid && transactions.length > 0 && (
+            <div className="card">
+              <h3 className="font-semibold text-gray-900 mb-3">Default Category</h3>
+              <p className="text-sm text-gray-500 mb-3">
+                Applied to all transactions. You can override per-row below.
+              </p>
+              <div className="relative">
+                <select
+                  value={defaultCategory}
+                  onChange={(e) => applyDefaultCategory(e.target.value)}
+                  className="input pr-8 text-sm appearance-none"
+                >
+                  {categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name} ({c.type})</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+          )}
+
+          {/* Transaction Preview */}
+          {mappingValid && transactions.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-900">
+                  Preview ({transactions.length} transactions)
+                </h3>
+                <button
+                  onClick={handleImport}
+                  disabled={importing}
+                  className="text-xs bg-bloom-100 text-bloom-700 px-3 py-1.5 rounded-full hover:bg-bloom-200 transition-colors flex items-center gap-1"
+                >
+                  {importing ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    'Import All'
+                  )}
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {transactions.map((tx, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg group">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{tx.description}</p>
+                      <p className="text-xs text-gray-400">{tx.date}</p>
+                    </div>
+
+                    {/* Per-row category */}
+                    <div className="relative hidden group-hover:block sm:block">
+                      <select
+                        value={tx.category}
+                        onChange={(e) => setTransactionCategory(i, e.target.value)}
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1 pr-6 appearance-none bg-white"
+                      >
+                        {categories.map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3 h-3 text-gray-400 absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+
+                    {/* Type toggle */}
+                    <button
+                      onClick={() => setTransactionType(i, tx.type === 'expense' ? 'income' : 'expense')}
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+                        tx.type === 'income'
+                          ? 'bg-sprout-100 text-sprout-700'
+                          : 'bg-red-50 text-red-600'
+                      }`}
+                      title="Click to toggle income/expense"
+                    >
+                      {tx.type === 'income' ? 'Income' : 'Expense'}
+                    </button>
+
+                    <span className={`text-sm font-medium tabular-nums w-24 text-right ${
+                      tx.type === 'income' ? 'text-sprout-600' : 'text-gray-900'
+                    }`}>
+                      {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                    </span>
+
+                    {/* Remove row */}
+                    <button
+                      onClick={() => setTransactions(prev => prev.filter((_, j) => j !== i))}
+                      className="text-gray-300 hover:text-red-400 transition-colors"
+                      title="Remove"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {mappingValid && transactions.length === 0 && rows.length > 0 && (
+            <div className="card text-center py-6">
+              <p className="text-gray-500 text-sm">
+                No valid transactions found. Check your column mapping — dates or amounts may not be parsing correctly.
+              </p>
+            </div>
+          )}
+
+          {/* Import button at bottom */}
+          {mappingValid && transactions.length > 0 && (
+            <button
+              onClick={handleImport}
+              disabled={importing}
+              className="btn-primary w-full"
+            >
+              {importing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Importing {transactions.length} transactions...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Import {transactions.length} Transactions
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ====== STEP 3: Done ====== */}
+      {step === 'done' && (
+        <div className="card text-center py-8">
+          <CheckCircle2 className="w-12 h-12 text-sprout-500 mx-auto mb-4" />
+          <h3 className="font-display text-xl font-semibold text-gray-900 mb-2">
+            Import Complete
+          </h3>
+          <p className="text-gray-500 mb-6">
+            Successfully imported {importedCount} transaction{importedCount !== 1 ? 's' : ''}.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Link href="/dashboard" className="btn-primary">
+              Go to Dashboard
+            </Link>
+            <button
+              onClick={() => {
+                setStep('upload')
+                setFile(null)
+                setPastedText('')
+                setHeaders([])
+                setRows([])
+                setColumnRoles([])
+                setTransactions([])
+                setImportedCount(0)
+                setError(null)
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+            >
+              Import More
+            </button>
+          </div>
         </div>
       )}
     </div>
