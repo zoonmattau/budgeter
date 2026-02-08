@@ -174,70 +174,93 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
       return
     }
 
-    // Create the transaction (investments and subscriptions are recorded as expenses)
-    const { error } = await supabase.from('transactions').insert({
-      user_id: user.id,
-      category_id: categoryId || expenseCategories[0]?.id,
-      amount: parseFloat(amount),
-      type: (isInvestment || isSubscription) ? 'expense' : transactionType,
-      description: description || selectedCategory?.name || incomePreset || 'Income',
-      date: date,
-      account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : isInvestment ? selectedInvestmentId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
-      is_recurring: isRecurring,
-    })
+    // Check if the transaction date is in the future
+    const isFutureDate = new Date(date) > new Date(format(new Date(), 'yyyy-MM-dd'))
 
-    // If expense or subscription was added to a credit card, increase card balance (debt increases)
-    // If expense or subscription was added to a bank account, decrease bank balance (money leaves)
-    if (!error && (isExpense || isSubscription) && selectedCardId) {
-      const card = creditCards.find(c => c.id === selectedCardId)
-      if (card) {
-        await supabase
-          .from('accounts')
-          .update({
-            balance: card.balance + parseFloat(amount),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedCardId)
-      } else {
-        // Check if it's a bank account
-        const bank = bankAccounts.find(a => a.id === selectedCardId)
+    // Only create a transaction record if the date is today or in the past
+    // Future-dated recurring items just create a bill (handled below)
+    let error: { message: string; code?: string } | null = null
+    if (!isFutureDate) {
+      const { error: txnError } = await supabase.from('transactions').insert({
+        user_id: user.id,
+        category_id: categoryId || expenseCategories[0]?.id,
+        amount: parseFloat(amount),
+        type: (isInvestment || isSubscription) ? 'expense' : transactionType,
+        description: description || selectedCategory?.name || incomePreset || 'Income',
+        date: date,
+        account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : isInvestment ? selectedInvestmentId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
+        is_recurring: isRecurring,
+      })
+      error = txnError
+    } else if (!isRecurring && !isSubscription && !isInvestment) {
+      // Non-recurring future transactions still get created (user explicitly chose a future date)
+      const { error: txnError } = await supabase.from('transactions').insert({
+        user_id: user.id,
+        category_id: categoryId || expenseCategories[0]?.id,
+        amount: parseFloat(amount),
+        type: transactionType,
+        description: description || selectedCategory?.name || incomePreset || 'Income',
+        date: date,
+        account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
+        is_recurring: false,
+      })
+      error = txnError
+    }
+
+    // Only update account balances for transactions that happened (not future-dated)
+    if (!error && !isFutureDate) {
+      // If expense or subscription was added to a credit card, increase card balance (debt increases)
+      // If expense or subscription was added to a bank account, decrease bank balance (money leaves)
+      if ((isExpense || isSubscription) && selectedCardId) {
+        const card = creditCards.find(c => c.id === selectedCardId)
+        if (card) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: card.balance + parseFloat(amount),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', selectedCardId)
+        } else {
+          const bank = bankAccounts.find(a => a.id === selectedCardId)
+          if (bank) {
+            await supabase
+              .from('accounts')
+              .update({
+                balance: bank.balance - parseFloat(amount),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', selectedCardId)
+          }
+        }
+      }
+
+      // If investment contribution, update the investment account balance
+      if (isInvestment && selectedInvestmentId) {
+        const account = investmentAccounts.find(a => a.id === selectedInvestmentId)
+        if (account) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: account.balance + parseFloat(amount),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', selectedInvestmentId)
+        }
+      }
+
+      // If income was deposited to a bank account, increase the bank balance
+      if (transactionType === 'income' && selectedBankAccountId) {
+        const bank = bankAccounts.find(a => a.id === selectedBankAccountId)
         if (bank) {
           await supabase
             .from('accounts')
             .update({
-              balance: bank.balance - parseFloat(amount),
+              balance: bank.balance + parseFloat(amount),
               updated_at: new Date().toISOString(),
             })
-            .eq('id', selectedCardId)
+            .eq('id', selectedBankAccountId)
         }
-      }
-    }
-
-    // If investment contribution, update the investment account balance
-    if (!error && isInvestment && selectedInvestmentId) {
-      const account = investmentAccounts.find(a => a.id === selectedInvestmentId)
-      if (account) {
-        await supabase
-          .from('accounts')
-          .update({
-            balance: account.balance + parseFloat(amount),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedInvestmentId)
-      }
-    }
-
-    // If income was deposited to a bank account, increase the bank balance
-    if (!error && transactionType === 'income' && selectedBankAccountId) {
-      const bank = bankAccounts.find(a => a.id === selectedBankAccountId)
-      if (bank) {
-        await supabase
-          .from('accounts')
-          .update({
-            balance: bank.balance + parseFloat(amount),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedBankAccountId)
       }
     }
 
