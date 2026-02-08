@@ -102,7 +102,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .from('income_entries')
           .select('*')
           .eq('user_id', user.id)
-          .eq('month', currentMonth),
+          .eq('month', currentMonth)
+          .is('household_id', null),
 
     // Budgets - scope aware
     scope === 'household' && householdId
@@ -115,7 +116,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .from('budgets')
           .select('*, categories(*)')
           .eq('user_id', user.id)
-          .eq('month', currentMonth),
+          .eq('month', currentMonth)
+          .is('household_id', null),
 
     // Transactions - scope aware with profile data for household view
     // Filter to current month but exclude future dates
@@ -131,6 +133,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .from('transactions')
           .select('*, categories(*), accounts:account_id(name)')
           .eq('user_id', user.id)
+          .is('household_id', null)
           .gte('date', currentMonth)
           .lte('date', format(today, 'yyyy-MM-dd'))
           .order('date', { ascending: false }),
@@ -148,6 +151,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .from('goals')
           .select('*')
           .eq('user_id', user.id)
+          .is('household_id', null)
           .eq('status', 'active')
           .order('created_at', { ascending: false })
           .limit(3),
@@ -165,6 +169,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .from('bills')
           .select('*, categories(*)')
           .eq('user_id', user.id)
+          .is('household_id', null)
           .eq('is_active', true)
           .order('next_due', { ascending: true })
           .limit(4),
@@ -191,7 +196,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       : supabase
           .from('accounts')
           .select('*')
-          .eq('user_id', user.id),
+          .eq('user_id', user.id)
+          .is('household_id', null),
 
     // Predictions (personal only for now)
     supabase

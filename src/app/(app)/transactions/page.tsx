@@ -79,6 +79,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
           .from('transactions')
           .select('*, categories(*)')
           .eq('user_id', user.id)
+          .is('household_id', null)
 
     // Apply date filters
     if (accountFilter) {
@@ -118,11 +119,13 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
       .from('accounts')
       .select('*')
       .eq('user_id', user.id)
+      .is('household_id', null)
       .in('type', ['credit', 'credit_card']),
     supabase
       .from('accounts')
       .select('*')
       .eq('user_id', user.id)
+      .is('household_id', null)
       .order('name'),
     accountFilter
       ? supabase

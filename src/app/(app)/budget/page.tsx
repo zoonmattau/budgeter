@@ -106,7 +106,8 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .from('budgets')
           .select('*')
           .eq('user_id', user.id)
-          .eq('month', currentMonth),
+          .eq('month', currentMonth)
+          .is('household_id', null),
     scope === 'household' && householdId
       ? supabase
           .from('income_entries')
@@ -117,7 +118,8 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .from('income_entries')
           .select('*')
           .eq('user_id', user.id)
-          .eq('month', currentMonth),
+          .eq('month', currentMonth)
+          .is('household_id', null),
     scope === 'household' && householdId
       ? supabase
           .from('transactions')
@@ -132,7 +134,8 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .eq('user_id', user.id)
           .eq('type', 'expense')
           .gte('date', currentMonth)
-          .lte('date', format(new Date(), 'yyyy-MM-dd')),
+          .lte('date', format(new Date(), 'yyyy-MM-dd'))
+          .is('household_id', null),
     scope === 'household' && householdId
       ? supabase
           .from('bills')
@@ -145,6 +148,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .select('id, name, amount, frequency, next_due, category_id, is_active, is_one_off, saved_amount')
           .eq('user_id', user.id)
           .eq('is_active', true)
+          .is('household_id', null)
           .order('next_due'),
     scope === 'household' && householdId
       ? supabase
@@ -158,6 +162,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .select('id, name, type, balance, minimum_payment, payment_frequency')
           .eq('user_id', user.id)
           .in('type', ['credit', 'credit_card', 'debt', 'loan'])
+          .is('household_id', null)
           .gt('balance', 0),
     // Savings goals (non-debt payoff goals)
     supabase
