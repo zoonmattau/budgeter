@@ -183,6 +183,7 @@ export function BudgetBuilder({
   })
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
   const [extraDebtPayment, setExtraDebtPayment] = useState(savedExtraDebtPayment)
   const [sinkingFundsExpanded, setSinkingFundsExpanded] = useState(false)
@@ -241,6 +242,7 @@ export function BudgetBuilder({
     const saveAllocations = overrides?.allocs || allocations
     setSaving(true)
     setSaveSuccess(false)
+    setSaveError(null)
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -250,17 +252,27 @@ export function BudgetBuilder({
 
     // Delete existing budgets for this month
     if (isHousehold && householdId) {
+      // First delete current user's household budgets (guaranteed by RLS user_id check)
       const { error: deleteError } = await supabase
         .from('budgets')
         .delete()
+        .eq('user_id', user.id)
         .eq('household_id', householdId)
         .eq('month', currentMonth)
 
       if (deleteError) {
+        setSaveError('Failed to update household budget. Please try again.')
         console.error('Error deleting budgets:', deleteError)
         setSaving(false)
         return
       }
+
+      // Also try to delete other members' household budgets so there's only one source of truth
+      await supabase
+        .from('budgets')
+        .delete()
+        .eq('household_id', householdId)
+        .eq('month', currentMonth)
     } else {
       const { error: deleteError } = await supabase
         .from('budgets')
@@ -270,6 +282,7 @@ export function BudgetBuilder({
         .is('household_id', null)
 
       if (deleteError) {
+        setSaveError('Failed to update budget. Please try again.')
         console.error('Error deleting budgets:', deleteError)
         setSaving(false)
         return
@@ -289,6 +302,7 @@ export function BudgetBuilder({
     if (inserts.length > 0) {
       const { error: insertError } = await supabase.from('budgets').insert(inserts)
       if (insertError) {
+        setSaveError('Failed to save budget allocations. Please try again.')
         console.error('Error inserting budgets:', insertError)
         setSaving(false)
         return
@@ -1507,6 +1521,11 @@ export function BudgetBuilder({
       )}
 
       {/* Save Button */}
+      {saveError && (
+        <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm text-center font-medium">
+          {saveError}
+        </div>
+      )}
       {saveSuccess && (
         <div className="p-3 bg-sprout-50 text-sprout-700 rounded-xl text-sm text-center font-medium">
           Budget saved successfully!

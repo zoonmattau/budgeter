@@ -258,7 +258,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
-  const categoryAllocated = budgets?.reduce((sum, b) => sum + Number(b.allocated), 0) || 0
+
+  // Deduplicate household budgets by category_id (keep most recent per category)
+  const deduplicatedBudgets = scope === 'household'
+    ? Object.values(
+        (budgets || []).reduce((acc, b) => {
+          if (!acc[b.category_id] || b.updated_at > acc[b.category_id].updated_at) {
+            acc[b.category_id] = b
+          }
+          return acc
+        }, {} as Record<string, NonNullable<typeof budgets>[0]>)
+      )
+    : budgets || []
+  const categoryAllocated = deduplicatedBudgets.reduce((sum, b) => sum + Number(b.allocated), 0)
 
   // Calculate fixed costs to match budget builder
   const frequencyToMonthly: Record<string, number> = {

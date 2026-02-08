@@ -169,6 +169,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       .from('goals')
       .select('id, name, target_amount, current_amount, target_date, icon, color, goal_type')
       .eq('user_id', user.id)
+      .is('household_id', null)
       .eq('status', 'active')
       .neq('goal_type', 'debt_payoff')
       .order('created_at'),
@@ -177,6 +178,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       .from('accounts')
       .select('id, name, type, balance')
       .eq('user_id', user.id)
+      .is('household_id', null)
       .in('type', ['bank', 'cash']),
     // Budget settings (extra debt payment, etc.)
     scope === 'household' && householdId
@@ -194,6 +196,19 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .is('household_id', null)
           .maybeSingle(),
   ])
+
+  // Deduplicate household budgets by category_id (keep most recent per category)
+  // This ensures all household members see the same values
+  const deduplicatedBudgets = scope === 'household'
+    ? Object.values(
+        (budgets || []).reduce((acc, b) => {
+          if (!acc[b.category_id] || b.updated_at > acc[b.category_id].updated_at) {
+            acc[b.category_id] = b
+          }
+          return acc
+        }, {} as Record<string, NonNullable<typeof budgets>[0]>)
+      )
+    : budgets || []
 
   // Filter out Interest and Other categories, then sort with rent/mortgage at the top
   const sortedCategories = [...(categories || [])]
@@ -246,6 +261,8 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
     weekly: 4.33,
     fortnightly: 2.17,
     monthly: 1,
+    quarterly: 1 / 3,
+    yearly: 1 / 12,
   }
 
   const totalHouseholdContributions = memberContributions.reduce((sum, m) => {
@@ -271,7 +288,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       <BudgetBuilder
         key={scope} // Force remount when scope changes to reset allocations state
         categories={sortedCategories}
-        budgets={budgets || []}
+        budgets={deduplicatedBudgets}
         incomeEntries={incomeEntries || []}
         spentByCategory={spentByCategory}
         spentByMemberByCategory={spentByMemberByCategory}
