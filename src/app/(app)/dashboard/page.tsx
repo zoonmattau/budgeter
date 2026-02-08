@@ -550,14 +550,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           a.due_date &&
           a.minimum_payment
         ) || []}
-        recentTransactions={typedTransactions.slice(0, 10).map(t => ({
-          id: t.id,
-          description: t.description,
-          amount: Number(t.amount),
-          date: t.date,
-          type: t.type as 'expense' | 'income' | 'investment',
-          categories: t.categories,
-        }))}
       />
 
       {/* Debt Repayments */}
