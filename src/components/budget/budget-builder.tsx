@@ -195,7 +195,8 @@ export function BudgetBuilder({
   const [showCreateCategory, setShowCreateCategory] = useState(false)
 
   const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + a, 0)
-  const totalFixedCosts = monthlySinkingFunds + monthlyDebtPayments + extraDebtPayment
+  const householdContributionCost = !isHousehold && householdId ? userMonthlyContribution : 0
+  const totalFixedCosts = monthlySinkingFunds + monthlyDebtPayments + extraDebtPayment + householdContributionCost
   const totalCommitted = totalAllocated + totalFixedCosts
   const unallocated = totalIncome - totalCommitted
   const isBalanced = Math.abs(unallocated) < 0.01
@@ -252,7 +253,8 @@ export function BudgetBuilder({
 
     // Delete existing budgets for this month
     if (isHousehold && householdId) {
-      // First delete current user's household budgets (guaranteed by RLS user_id check)
+      // Delete only current user's household budgets (each member keeps their own copy
+      // with their own category IDs - the page remaps by category name when loading)
       const { error: deleteError } = await supabase
         .from('budgets')
         .delete()
@@ -266,13 +268,6 @@ export function BudgetBuilder({
         setSaving(false)
         return
       }
-
-      // Also try to delete other members' household budgets so there's only one source of truth
-      await supabase
-        .from('budgets')
-        .delete()
-        .eq('household_id', householdId)
-        .eq('month', currentMonth)
     } else {
       const { error: deleteError } = await supabase
         .from('budgets')

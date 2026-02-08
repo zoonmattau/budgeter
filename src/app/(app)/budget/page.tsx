@@ -99,7 +99,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
     scope === 'household' && householdId
       ? supabase
           .from('budgets')
-          .select('*')
+          .select('*, categories(name)')
           .eq('household_id', householdId)
           .eq('month', currentMonth)
       : supabase
@@ -197,18 +197,38 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .maybeSingle(),
   ])
 
-  // Deduplicate household budgets by category_id (keep most recent per category)
-  // This ensures all household members see the same values
-  const deduplicatedBudgets = scope === 'household'
-    ? Object.values(
-        (budgets || []).reduce((acc, b) => {
-          if (!acc[b.category_id] || b.updated_at > acc[b.category_id].updated_at) {
-            acc[b.category_id] = b
-          }
-          return acc
-        }, {} as Record<string, NonNullable<typeof budgets>[0]>)
-      )
-    : budgets || []
+  // For household budgets: deduplicate by category NAME (not ID) since each member
+  // has their own categories with different IDs. Then remap to current user's category IDs.
+  // This ensures both household members see the same allocation values.
+  const deduplicatedBudgets = (() => {
+    if (scope !== 'household') return budgets || []
+
+    // Build a map from category name → current user's category ID
+    const userCatByName: Record<string, string> = {}
+    for (const c of categories || []) {
+      userCatByName[c.name.toLowerCase()] = c.id
+    }
+
+    // Build a name-based map keeping the most recent allocation per category name
+    type BudgetRow = NonNullable<typeof budgets>[0]
+    const byName: Record<string, BudgetRow> = {}
+    for (const b of budgets || []) {
+      const catName = ((b as Record<string, unknown>).categories as { name: string } | null)?.name?.toLowerCase() || ''
+      if (!catName) continue
+      if (!byName[catName] || b.updated_at > byName[catName].updated_at) {
+        byName[catName] = b
+      }
+    }
+
+    // Remap to current user's category IDs
+    return Object.entries(byName).map(([name, budget]) => {
+      const userCatId = userCatByName[name]
+      if (userCatId && userCatId !== budget.category_id) {
+        return Object.assign({}, budget, { category_id: userCatId })
+      }
+      return budget
+    })
+  })()
 
   // Filter out Interest and Other categories, then sort with rent/mortgage at the top
   const sortedCategories = [...(categories || [])]

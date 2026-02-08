@@ -40,6 +40,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     .select(`
       household_id,
       role,
+      contribution_amount,
+      contribution_frequency,
       households (
         id,
         name
@@ -51,6 +53,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const householdId = membership?.household_id || null
   const isInHousehold = Boolean(householdId)
   const scope: ViewScope = params.scope === 'household' && isInHousehold ? 'household' : 'personal'
+
+  // Calculate user's monthly household contribution
+  const frequencyMultiplierMap: Record<string, number> = {
+    weekly: 4.33, fortnightly: 2.17, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12,
+  }
+  const userContributionAmount = membership?.contribution_amount ? Number(membership.contribution_amount) : 0
+  const userContributionFreq = membership?.contribution_frequency || 'monthly'
+  const userMonthlyContribution = userContributionAmount * (frequencyMultiplierMap[userContributionFreq] || 1)
 
   // Fetch household members if in household view
   let members: HouseholdMember[] = []
@@ -233,12 +243,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .eq('user_id', user.id)
       .eq('is_recurring', true),
 
-    // All active bills for cash flow (personal only)
-    supabase
-      .from('bills')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_active', true),
+    // All active bills for cash flow and sinking fund calculations
+    scope === 'household' && householdId
+      ? supabase
+          .from('bills')
+          .select('*')
+          .eq('household_id', householdId)
+          .eq('is_active', true)
+      : supabase
+          .from('bills')
+          .select('*')
+          .eq('user_id', user.id)
+          .is('household_id', null)
+          .eq('is_active', true),
 
     // Budget settings (extra debt payment, etc.)
     scope === 'household' && householdId
@@ -259,12 +276,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
 
-  // Deduplicate household budgets by category_id (keep most recent per category)
+  // For household budgets: deduplicate by category NAME (not ID) since each member
+  // has their own categories with different IDs. Keep the most recent per name.
   const deduplicatedBudgets = scope === 'household'
     ? Object.values(
         (budgets || []).reduce((acc, b) => {
-          if (!acc[b.category_id] || b.updated_at > acc[b.category_id].updated_at) {
-            acc[b.category_id] = b
+          const catName = b.categories?.name?.toLowerCase() || ''
+          if (!catName) return acc
+          if (!acc[catName] || b.updated_at > acc[catName].updated_at) {
+            acc[catName] = b
           }
           return acc
         }, {} as Record<string, NonNullable<typeof budgets>[0]>)
@@ -289,7 +309,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     .reduce((sum, b) => sum + Number(b.amount) / (b.frequency === 'yearly' ? 12 : 3), 0)
   const extraDebtPayment = Number(budgetSettings?.extra_debt_payment) || 0
 
-  const totalAllocated = categoryAllocated + monthlyDebtPayments + monthlySinkingFunds + extraDebtPayment
+  const householdContributionCost = scope === 'personal' && householdId ? userMonthlyContribution : 0
+  const totalAllocated = categoryAllocated + monthlyDebtPayments + monthlySinkingFunds + extraDebtPayment + householdContributionCost
   const totalSpent = transactions
     ?.filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + Number(t.amount), 0) || 0
