@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowRight, ArrowLeft, Sparkles, Phone, Users, Check } from 'lucide-react'
+import { ArrowRight, ArrowLeft, Sparkles, Phone, Users, Check, Calendar } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
+import { format, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday } from 'date-fns'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { HouseholdStep } from '@/components/household/household-step'
 import { clearStoredInviteCode } from '@/lib/invitations'
@@ -26,6 +27,14 @@ export default function OnboardingPage() {
   const [preJoinedHouseholdName, setPreJoinedHouseholdName] = useState<string | null>(null)
   const [goalName, setGoalName] = useState('')
   const [goalAmount, setGoalAmount] = useState('')
+  const [payDay, setPayDay] = useState<number>(15)
+  const [nextPayDate, setNextPayDate] = useState(() => {
+    // Default: 15th of next month (since default frequency is monthly)
+    const today = new Date()
+    let d = new Date(today.getFullYear(), today.getMonth(), 15)
+    if (d <= today) d = new Date(today.getFullYear(), today.getMonth() + 1, 15)
+    return format(d, 'yyyy-MM-dd')
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -85,6 +94,8 @@ export default function OnboardingPage() {
           amount: Math.round(monthlyAmount * 100) / 100,
           is_recurring: true,
           pay_frequency: incomeFrequency,
+          pay_day: payDay,
+          next_pay_date: nextPayDate || null,
         })
         if (incomeError) {
           console.error('Income save error:', incomeError)
@@ -193,6 +204,10 @@ export default function OnboardingPage() {
             setIncome={setIncome}
             incomeFrequency={incomeFrequency}
             setIncomeFrequency={setIncomeFrequency}
+            payDay={payDay}
+            setPayDay={setPayDay}
+            nextPayDate={nextPayDate}
+            setNextPayDate={setNextPayDate}
             incomeSource={incomeSource}
             setIncomeSource={setIncomeSource}
             onBack={() => setStep('welcome')}
@@ -316,11 +331,51 @@ function WelcomeStep({
 
 type PayFrequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
 
+const WEEKDAYS = [
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+  { value: 0, label: 'Sun' },
+]
+
+function getNextDayOfWeek(dayOfWeek: number): Date {
+  const today = new Date()
+  if (today.getDay() === dayOfWeek) return today
+  const fns = [nextSunday, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday]
+  return fns[dayOfWeek](today)
+}
+
+function computeNextPayDate(frequency: PayFrequency, day: number): string {
+  const isWeekBased = frequency === 'weekly' || frequency === 'fortnightly'
+  if (isWeekBased) {
+    return format(getNextDayOfWeek(day), 'yyyy-MM-dd')
+  }
+  const today = new Date()
+  let nextDate = new Date(today.getFullYear(), today.getMonth(), day)
+  if (nextDate <= today) {
+    if (frequency === 'quarterly') {
+      nextDate = new Date(today.getFullYear(), today.getMonth() + 3, day)
+    } else if (frequency === 'yearly') {
+      nextDate = new Date(today.getFullYear() + 1, today.getMonth(), day)
+    } else {
+      nextDate = new Date(today.getFullYear(), today.getMonth() + 1, day)
+    }
+  }
+  return format(nextDate, 'yyyy-MM-dd')
+}
+
 function IncomeStep({
   income,
   setIncome,
   incomeFrequency,
   setIncomeFrequency,
+  payDay,
+  setPayDay,
+  nextPayDate,
+  setNextPayDate,
   incomeSource,
   setIncomeSource,
   onBack,
@@ -330,11 +385,30 @@ function IncomeStep({
   setIncome: (v: string) => void
   incomeFrequency: PayFrequency
   setIncomeFrequency: (v: PayFrequency) => void
+  payDay: number
+  setPayDay: (v: number) => void
+  nextPayDate: string
+  setNextPayDate: (v: string) => void
   incomeSource: string
   setIncomeSource: (v: string) => void
   onBack: () => void
   onNext: () => void
 }) {
+  const isWeekBased = incomeFrequency === 'weekly' || incomeFrequency === 'fortnightly'
+
+  function handleFrequencyChange(f: PayFrequency) {
+    setIncomeFrequency(f)
+    const newIsWeek = f === 'weekly' || f === 'fortnightly'
+    const newDay = newIsWeek ? 4 : 15 // Thursday or 15th
+    setPayDay(newDay)
+    setNextPayDate(computeNextPayDate(f, newDay))
+  }
+
+  function handlePayDayChange(day: number) {
+    setPayDay(day)
+    setNextPayDate(computeNextPayDate(incomeFrequency, day))
+  }
+
   const sources = ['Salary', 'Freelance', 'Business', 'Other']
   const frequencies: { value: PayFrequency; label: string }[] = [
     { value: 'weekly', label: 'Weekly' },
@@ -361,7 +435,7 @@ function IncomeStep({
               <button
                 key={f.value}
                 type="button"
-                onClick={() => setIncomeFrequency(f.value)}
+                onClick={() => handleFrequencyChange(f.value)}
                 className={`px-4 py-2 rounded-full border-2 text-sm font-medium whitespace-nowrap transition-all ${
                   incomeFrequency === f.value
                     ? 'border-bloom-500 bg-bloom-50 text-bloom-700'
@@ -372,6 +446,46 @@ function IncomeStep({
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="label">{isWeekBased ? 'Which day do you get paid?' : 'What day of the month?'}</label>
+          {isWeekBased ? (
+            <div className="flex gap-2">
+              {WEEKDAYS.map((day) => (
+                <button
+                  key={day.value}
+                  type="button"
+                  onClick={() => handlePayDayChange(day.value)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${
+                    payDay === day.value
+                      ? 'bg-bloom-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {day.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <select
+              value={payDay}
+              onChange={(e) => handlePayDayChange(parseInt(e.target.value))}
+              className="input"
+            >
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                <option key={day} value={day}>
+                  {day}{day === 1 || day === 21 || day === 31 ? 'st' : day === 2 || day === 22 ? 'nd' : day === 3 || day === 23 ? 'rd' : 'th'}
+                </option>
+              ))}
+            </select>
+          )}
+          {nextPayDate && (
+            <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              Next pay: {format(new Date(nextPayDate + 'T00:00:00'), 'EEE, d MMM yyyy')}
+            </p>
+          )}
         </div>
 
         <div>
