@@ -253,12 +253,10 @@ export function BudgetBuilder({
 
     // Delete existing budgets for this month
     if (isHousehold && householdId) {
-      // Delete only current user's household budgets (each member keeps their own copy
-      // with their own category IDs - the page remaps by category name when loading)
+      // Delete all household budgets for this month (single source of truth)
       const { error: deleteError } = await supabase
         .from('budgets')
         .delete()
-        .eq('user_id', user.id)
         .eq('household_id', householdId)
         .eq('month', currentMonth)
 
