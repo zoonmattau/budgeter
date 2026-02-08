@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2, Calendar, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Trash2, Calendar, RotateCcw, CheckCircle2, Plus } from 'lucide-react'
 import { format, addMonths, addWeeks } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { formatCurrency } from '@/lib/utils'
+import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import type { Tables } from '@/lib/database.types'
 
 type BillWithCategory = Tables<'bills'> & {
@@ -47,6 +48,7 @@ export function BillEditForm({ bill }: BillEditFormProps) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [showCreateCategory, setShowCreateCategory] = useState(false)
 
   const supabase = createClient()
 
@@ -421,7 +423,7 @@ export function BillEditForm({ bill }: BillEditFormProps) {
         <div>
           <label className="label">Category</label>
           <div className="grid grid-cols-4 gap-2">
-            {categories.slice(0, 8).map((cat) => (
+            {categories.slice(0, 11).map((cat) => (
               <button
                 key={cat.id}
                 type="button"
@@ -441,6 +443,14 @@ export function BillEditForm({ bill }: BillEditFormProps) {
                 />
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowCreateCategory(true)}
+              className="p-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all flex flex-col items-center justify-center gap-1"
+            >
+              <Plus className="w-5 h-5 text-gray-400" />
+              <span className="text-xs text-gray-500 font-medium">New</span>
+            </button>
           </div>
         </div>
 
@@ -464,6 +474,18 @@ export function BillEditForm({ bill }: BillEditFormProps) {
           {loading ? 'Saving...' : 'Save Changes'}
         </button>
       </form>
+
+      {showCreateCategory && (
+        <CreateCategoryModal
+          type="expense"
+          onClose={() => setShowCreateCategory(false)}
+          onCreated={(newCat) => {
+            setCategories(prev => [...prev, newCat])
+            setCategoryId(newCat.id)
+            setShowCreateCategory(false)
+          }}
+        />
+      )}
 
       {/* Danger Zone */}
       <div className="pt-4 border-t border-gray-100 space-y-2">

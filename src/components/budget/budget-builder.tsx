@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { RotateCcw, Wand2, Wallet, Users, AlertCircle, ChevronDown, ChevronUp, Calendar, Home, Check, Target, Gift, Plane, Sparkles } from 'lucide-react'
+import { RotateCcw, Wand2, Wallet, Users, AlertCircle, ChevronDown, ChevronUp, Calendar, Home, Check, Target, Gift, Plane, Sparkles, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -12,6 +12,7 @@ import { MemberBreakdownInline } from '@/components/ui/member-breakdown'
 import { createClient } from '@/lib/supabase/client'
 import { format, differenceInDays, addWeeks, addMonths } from 'date-fns'
 import type { Tables } from '@/lib/database.types'
+import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
 
@@ -189,6 +190,8 @@ export function BudgetBuilder({
   const [contributionAmount, setContributionAmount] = useState(userContribution)
   const [contributionFreq, setContributionFreq] = useState(userContributionFrequency)
   const [savingContribution, setSavingContribution] = useState(false)
+  const [localCategories, setLocalCategories] = useState(budgetCategories)
+  const [showCreateCategory, setShowCreateCategory] = useState(false)
 
   const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + a, 0)
   const totalFixedCosts = monthlySinkingFunds + monthlyDebtPayments + extraDebtPayment
@@ -876,7 +879,7 @@ export function BudgetBuilder({
 
       {/* Category Allocations (discretionary spending) */}
       <div className="space-y-3">
-        {budgetCategories.map((category) => {
+        {localCategories.map((category) => {
           const allocated = allocations[category.id] || 0
           const spent = spentByCategory[category.id] || 0
           const memberBreakdown = isHousehold ? getMemberBreakdown(category.id) : []
@@ -1178,7 +1181,28 @@ export function BudgetBuilder({
             </div>
           )
         })}
+
+        {/* Add new category button */}
+        <button
+          type="button"
+          onClick={() => setShowCreateCategory(true)}
+          className="w-full p-4 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all flex items-center justify-center gap-2"
+        >
+          <Plus className="w-5 h-5 text-gray-400" />
+          <span className="text-sm text-gray-500 font-medium">Add Category</span>
+        </button>
       </div>
+
+      {showCreateCategory && (
+        <CreateCategoryModal
+          type="expense"
+          onClose={() => setShowCreateCategory(false)}
+          onCreated={(newCat) => {
+            setLocalCategories(prev => [...prev, newCat])
+            setShowCreateCategory(false)
+          }}
+        />
+      )}
 
       {/* Debt Repayments Section */}
       {debtAccounts.length > 0 && (monthlyDebtPayments > 0 || extraDebtPayment > 0) && (

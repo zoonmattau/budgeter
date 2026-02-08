@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { addMonths, format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { CurrencyInput } from '@/components/ui/currency-input'
+import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import type { Tables } from '@/lib/database.types'
 
 const frequencies = [
@@ -30,6 +31,7 @@ export default function NewBillPage() {
   const [categoryId, setCategoryId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showCreateCategory, setShowCreateCategory] = useState(false)
 
   const supabase = createClient()
 
@@ -271,7 +273,7 @@ export default function NewBillPage() {
         <div>
           <label className="label">Category</label>
           <div className="grid grid-cols-4 gap-2">
-            {categories.slice(0, 8).map((cat) => (
+            {categories.slice(0, 11).map((cat) => (
               <button
                 key={cat.id}
                 type="button"
@@ -291,6 +293,14 @@ export default function NewBillPage() {
                 />
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowCreateCategory(true)}
+              className="p-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-all flex flex-col items-center justify-center gap-1"
+            >
+              <Plus className="w-5 h-5 text-gray-400" />
+              <span className="text-xs text-gray-500 font-medium">New</span>
+            </button>
           </div>
         </div>
 
@@ -308,6 +318,18 @@ export default function NewBillPage() {
           {loading ? 'Adding...' : 'Add Bill'}
         </button>
       </form>
+
+      {showCreateCategory && (
+        <CreateCategoryModal
+          type="expense"
+          onClose={() => setShowCreateCategory(false)}
+          onCreated={(newCat) => {
+            setCategories(prev => [...prev, newCat])
+            setCategoryId(newCat.id)
+            setShowCreateCategory(false)
+          }}
+        />
+      )}
     </div>
   )
 }
