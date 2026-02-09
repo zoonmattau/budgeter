@@ -117,6 +117,7 @@ export function BudgetOverview({
   const leftPerDay = daysLeft > 0 ? remaining / daysLeft : 0
   const dailyAvgSpent = dayOfMonth > 0 ? spendableSpent / dayOfMonth : 0
   const dailySpendDiff = dailyBudget - dailyAvgSpent
+  const expectedPacePct = (dayOfMonth / totalDaysInMonth) * 100
 
   return (
     <div className="relative">
@@ -149,14 +150,23 @@ export function BudgetOverview({
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="h-3 bg-white/20 rounded-full overflow-hidden mb-3">
+        {/* Progress bar with pace marker */}
+        <div className="relative mb-3">
+          <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                isOverBudget ? 'bg-coral-400' : 'bg-white'
+              }`}
+              style={{ width: `${Math.min(spentPercentage, 100)}%` }}
+            />
+          </div>
+          {/* Expected pace marker */}
           <div
-            className={`h-full rounded-full transition-all duration-500 ${
-              isOverBudget ? 'bg-coral-400' : 'bg-white'
-            }`}
-            style={{ width: `${Math.min(spentPercentage, 100)}%` }}
-          />
+            className="absolute top-0 h-3 flex items-center"
+            style={{ left: `${Math.min(expectedPacePct, 100)}%` }}
+          >
+            <div className="w-0.5 h-5 -mt-1 bg-white/60 rounded-full" />
+          </div>
         </div>
 
         <div className="flex items-center justify-between text-sm">
