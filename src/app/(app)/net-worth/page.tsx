@@ -149,6 +149,7 @@ export default async function NetWorthPage() {
           milestoneName={milestone.name}
           projectedArrivalDate={projectedArrival ? projectedArrival.toISOString() : null}
           avgMonthlyChange={avgMonthlyChange}
+          lowestNetWorth={Math.min(...snapshotData.map(s => Number(s.net_worth)), netWorth)}
         />
       )}
 
