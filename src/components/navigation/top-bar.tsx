@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { Settings } from 'lucide-react'
 
@@ -10,7 +9,7 @@ export function TopBar() {
       <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
         {/* Logo */}
         <Link href="/dashboard" className="flex items-center gap-2">
-          <Image src="/Seedling.png" alt="Seedling" width={32} height={32} className="w-8 h-8" />
+          <img src="/Seedling.png" alt="Seedling" width={32} height={32} className="w-8 h-8" />
           <span className="font-display font-semibold text-gray-900">Seedling</span>
         </Link>
 

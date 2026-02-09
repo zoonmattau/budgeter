@@ -1,4 +1,3 @@
-import Image from 'next/image'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
@@ -30,7 +29,7 @@ export default async function OnboardingLayout({
       {/* Header */}
       <header className="px-4 py-4 flex items-center justify-center">
         <div className="flex items-center gap-2">
-          <Image src="/Seedling.png" alt="Seedling" width={32} height={32} className="w-8 h-8" />
+          <img src="/Seedling.png" alt="Seedling" width={32} height={32} className="w-8 h-8" />
           <span className="font-display font-semibold text-gray-900">Seedling</span>
         </div>
       </header>
