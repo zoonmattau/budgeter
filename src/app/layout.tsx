@@ -17,7 +17,10 @@ export const metadata: Metadata = {
   description: 'A budgeting app that helps your wealth grow. Set goals, track spending, and watch your savings sprout.',
   manifest: '/manifest.json',
   icons: {
-    icon: '/Seedling.png',
+    icon: [
+      { url: '/favicon.ico', sizes: '32x32' },
+      { url: '/Seedling.png', sizes: '512x512', type: 'image/png' },
+    ],
     apple: '/Seedling.png',
   },
 }
