@@ -51,7 +51,10 @@ export function DebtRepayments({ accounts, availableFunds, extraDebtPayment = 0 
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-display font-semibold text-gray-900">Debt Repayments</h2>
+        <div>
+          <h2 className="font-display font-semibold text-gray-900">Debt Repayments</h2>
+          <p className="text-xs text-gray-500">Recommended extra payments this month</p>
+        </div>
         <Link href="/debt-planner" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium flex items-center gap-1">
           <Calculator className="w-3.5 h-3.5" />
           Plan
@@ -79,8 +82,8 @@ export function DebtRepayments({ accounts, availableFunds, extraDebtPayment = 0 
               <p className="text-lg font-bold text-gray-900">{formatCurrency(totalMinimum)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Suggested Payment</p>
-              <p className="text-lg font-bold text-sprout-600">{formatCurrency(totalSuggested)}</p>
+              <p className="text-xs text-gray-500">Recommended to Pay</p>
+              <p className="text-lg font-bold text-bloom-600">{formatCurrency(totalSuggested)}</p>
             </div>
           </div>
         </div>
@@ -121,7 +124,8 @@ export function DebtRepayments({ accounts, availableFunds, extraDebtPayment = 0 
                   </div>
 
                   <div className="text-right">
-                    <p className="font-semibold text-sprout-600">{formatCurrency(suggestion.suggestedAmount)}</p>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">Pay</p>
+                    <p className="font-semibold text-gray-900">{formatCurrency(suggestion.suggestedAmount)}</p>
                     {suggestion.minimumAmount > 0 && suggestion.suggestedAmount > suggestion.minimumAmount && (
                       <p className="text-xs text-gray-400">Min: {formatCurrency(suggestion.minimumAmount)}</p>
                     )}
