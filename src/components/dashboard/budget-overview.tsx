@@ -205,20 +205,20 @@ export function BudgetOverview({
             {/* Supporting details */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
               <div>
-                <p className="text-white/50">Spent so far</p>
-                <p className="text-white/90">{formatCurrency(spendableSpent)}</p>
-              </div>
-              <div className="text-right">
                 <p className="text-white/50">Budget</p>
                 <p className="text-white/90">{formatCurrency(spendableAllocated)}</p>
               </div>
-              <div>
-                <p className="text-white/50">Remaining</p>
-                <p className={`text-white/90 ${isOverBudget ? 'text-coral-300' : ''}`}>{formatCurrency(Math.abs(remaining))}</p>
-              </div>
               <div className="text-right">
+                <p className="text-white/50">Spent so far</p>
+                <p className="text-white/90">{formatCurrency(spendableSpent)}</p>
+              </div>
+              <div>
                 <p className="text-white/50">{daysLeft} days left</p>
                 <p className="text-white/90">{formatCurrency(Math.max(0, leftPerDay))}/day</p>
+              </div>
+              <div className="text-right">
+                <p className="text-white/50">Remaining</p>
+                <p className={`text-white/90 ${isOverBudget ? 'text-coral-300' : ''}`}>{formatCurrency(Math.abs(remaining))}</p>
               </div>
             </div>
           </div>
