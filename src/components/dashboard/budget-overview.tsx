@@ -152,13 +152,19 @@ export function BudgetOverview({
 
         {/* Progress bar with pace marker */}
         <div className="relative mb-3">
-          <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+          <div className="h-3 bg-white/20 rounded-full overflow-hidden flex">
+            {/* Green portion: spending up to the pace marker */}
             <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                isOverBudget ? 'bg-coral-400' : 'bg-white'
-              }`}
-              style={{ width: `${Math.min(spentPercentage, 100)}%` }}
+              className="h-full bg-emerald-400 transition-all duration-500"
+              style={{ width: `${Math.min(spentPercentage, expectedPacePct, 100)}%` }}
             />
+            {/* Red portion: spending beyond the pace marker */}
+            {spentPercentage > expectedPacePct && (
+              <div
+                className="h-full bg-coral-400 transition-all duration-500"
+                style={{ width: `${Math.min(spentPercentage - expectedPacePct, 100 - expectedPacePct)}%` }}
+              />
+            )}
           </div>
           {/* Expected pace marker */}
           <div
