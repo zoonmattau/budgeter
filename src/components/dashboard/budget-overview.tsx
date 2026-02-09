@@ -176,16 +176,19 @@ export function BudgetOverview({
                 />
               )}
             </div>
-            {/* Expected pace marker */}
+            {/* Expected pace marker with label */}
             <div
-              className="absolute top-0 h-3 flex items-center"
+              className="absolute top-0 flex flex-col items-center"
               style={{ left: `${Math.min(expectedPacePct, 100)}%` }}
             >
               <div className="w-0.5 h-5 -mt-1 bg-white/60 rounded-full" />
+              <span className="text-[9px] text-white/50 -translate-x-1/2 whitespace-nowrap mt-0.5">
+                day {dayOfMonth} pace
+              </span>
             </div>
           </div>
-          <p className="text-[10px] text-white/50 mt-1 text-center">
-            {showBudgetDetail ? 'tap to hide' : 'tap for details'}
+          <p className="text-[10px] text-white/40 mt-2.5 text-center">
+            {showBudgetDetail ? 'tap to hide' : 'tap bar for details'}
           </p>
         </button>
 
