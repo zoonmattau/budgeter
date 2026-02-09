@@ -191,31 +191,35 @@ export function BudgetOverview({
 
         {/* Budget detail breakdown panel */}
         {showBudgetDetail && (
-          <div className="mb-3 p-3 bg-white/10 rounded-xl animate-in fade-in slide-in-from-top-1 duration-200 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-white/70">Spent</span>
-              <span className="font-semibold">{formatCurrency(spendableSpent)} of {formatCurrency(spendableAllocated)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/70">Day</span>
-              <span className="font-semibold">{dayOfMonth} of {totalDaysInMonth}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/70">Expected pace</span>
-              <span className="font-semibold">{formatCurrency(dailyBudget * dayOfMonth)} by today</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/70">Actual vs pace</span>
-              <span className={`font-semibold ${spendableSpent <= dailyBudget * dayOfMonth ? 'text-sprout-300' : 'text-coral-300'}`}>
+          <div className="mb-3 p-3 bg-white/10 rounded-xl animate-in fade-in slide-in-from-top-1 duration-200 text-sm">
+            {/* Hero stat: ahead or behind pace */}
+            <div className="text-center mb-3">
+              <p className={`text-lg font-bold ${spendableSpent <= dailyBudget * dayOfMonth ? 'text-sprout-300' : 'text-coral-300'}`}>
                 {formatCurrency(Math.abs(spendableSpent - dailyBudget * dayOfMonth))}{' '}
-                {spendableSpent <= dailyBudget * dayOfMonth ? 'under' : 'over'}
-              </span>
+                {spendableSpent <= dailyBudget * dayOfMonth ? 'under' : 'over'} pace
+              </p>
+              <p className="text-[11px] text-white/50">
+                day {dayOfMonth} of {totalDaysInMonth} &middot; should have spent {formatCurrency(dailyBudget * dayOfMonth)}
+              </p>
             </div>
-            <div className="flex justify-between pt-1 border-t border-white/15">
-              <span className="text-white/70">Remaining</span>
-              <span className={`font-semibold ${isOverBudget ? 'text-coral-300' : ''}`}>
-                {formatCurrency(Math.abs(remaining))} for {daysLeft} days ({formatCurrency(Math.max(0, leftPerDay))}/day)
-              </span>
+            {/* Supporting details */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div>
+                <p className="text-white/50">Spent so far</p>
+                <p className="text-white/90">{formatCurrency(spendableSpent)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-white/50">Budget</p>
+                <p className="text-white/90">{formatCurrency(spendableAllocated)}</p>
+              </div>
+              <div>
+                <p className="text-white/50">Remaining</p>
+                <p className={`text-white/90 ${isOverBudget ? 'text-coral-300' : ''}`}>{formatCurrency(Math.abs(remaining))}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-white/50">{daysLeft} days left</p>
+                <p className="text-white/90">{formatCurrency(Math.max(0, leftPerDay))}/day</p>
+              </div>
             </div>
           </div>
         )}
