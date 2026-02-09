@@ -113,7 +113,7 @@ export function NetWorthHistoryChart({
     <div className="space-y-4">
       <TimeRangeSelector range={range} setRange={setRange} />
       <ChartWrapper height={height}>
-        <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <ComposedChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -174,7 +174,7 @@ export function NetWorthHistoryChart({
               strokeWidth={1.5}
               label={{
                 value: nextMilestone.name,
-                position: 'right',
+                position: 'insideTopLeft',
                 fill: '#a855f7',
                 fontSize: 11,
                 fontWeight: 600,
@@ -196,7 +196,7 @@ export function NetWorthHistoryChart({
               strokeWidth={1}
               label={{
                 value: g.name,
-                position: 'right',
+                position: 'insideTopLeft',
                 fill: '#f59e0b',
                 fontSize: 10,
               }}
