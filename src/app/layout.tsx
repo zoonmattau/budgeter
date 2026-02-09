@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   title: 'Seedling - Plant Your Financial Future',
   description: 'A budgeting app that helps your wealth grow. Set goals, track spending, and watch your savings sprout.',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/Seedling.png',
+    apple: '/Seedling.png',
+  },
 }
 
 export const viewport: Viewport = {

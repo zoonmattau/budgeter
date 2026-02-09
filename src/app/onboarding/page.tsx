@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import { ArrowRight, ArrowLeft, Sparkles, Phone, Users, Check, Calendar } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
@@ -274,9 +275,7 @@ function WelcomeStep({
   return (
     <div>
       <div className="text-center mb-6">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-bloom-100 to-sprout-100 flex items-center justify-center mx-auto mb-4">
-          <Sparkles className="w-10 h-10 text-bloom-500" />
-        </div>
+        <Image src="/Seedling.png" alt="Seedling" width={80} height={80} className="w-20 h-20 mx-auto mb-4" />
 
         <h1 className="font-display text-2xl font-bold text-gray-900 mb-2">
           Welcome to Seedling
