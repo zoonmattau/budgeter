@@ -115,7 +115,8 @@ export function BudgetOverview({
   const daysLeft = totalDaysInMonth - dayOfMonth + 1 // including today
   const dailyBudget = spendableAllocated / totalDaysInMonth
   const leftPerDay = daysLeft > 0 ? remaining / daysLeft : 0
-  const dailyDiff = leftPerDay - dailyBudget
+  const dailyAvgSpent = dayOfMonth > 0 ? spendableSpent / dayOfMonth : 0
+  const dailySpendDiff = dailyBudget - dailyAvgSpent
 
   return (
     <div className="relative">
@@ -182,11 +183,12 @@ export function BudgetOverview({
               </p>
             </div>
             <div className="text-right">
-              <p className="text-bloom-100 text-xs">Daily budget: {formatCurrency(dailyBudget)}</p>
-              <p className={`font-semibold ${dailyDiff >= 0 ? '' : 'text-coral-300'}`}>
-                {dailyDiff >= 0
-                  ? `${formatCurrency(dailyDiff)}/day under`
-                  : `${formatCurrency(Math.abs(dailyDiff))}/day over`
+              <p className="text-bloom-100 text-xs">Avg spent/day</p>
+              <p className="font-semibold">{formatCurrency(dailyAvgSpent)}/day</p>
+              <p className={`text-xs mt-0.5 ${dailySpendDiff >= 0 ? 'text-white/70' : 'text-coral-300'}`}>
+                {dailySpendDiff >= 0
+                  ? `${formatCurrency(dailySpendDiff)}/day under`
+                  : `${formatCurrency(Math.abs(dailySpendDiff))}/day over`
                 }
               </p>
             </div>
