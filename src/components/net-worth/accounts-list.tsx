@@ -15,12 +15,22 @@ interface AccountsListProps {
 
 const typeLabels: Record<string, string> = {
   cash: 'Cash',
-  bank: 'Bank Account',
+  bank: 'Bank',
   credit: 'Credit Card',
   credit_card: 'Credit Card',
   investment: 'Investment',
   debt: 'Loan',
   loan: 'Loan',
+}
+
+const typeBadgeColors: Record<string, string> = {
+  cash: 'bg-emerald-50 text-emerald-700',
+  bank: 'bg-blue-50 text-blue-700',
+  credit: 'bg-purple-50 text-purple-700',
+  credit_card: 'bg-purple-50 text-purple-700',
+  investment: 'bg-sprout-50 text-sprout-700',
+  debt: 'bg-red-50 text-red-700',
+  loan: 'bg-red-50 text-red-700',
 }
 
 export function AccountsList({ accounts, showInterestInfo = false }: AccountsListProps) {
@@ -50,12 +60,19 @@ export function AccountsList({ accounts, showInterestInfo = false }: AccountsLis
                   size="md"
                 />
                 <div>
-                  <p className="font-medium text-gray-900 group-hover:text-bloom-600 transition-colors">
-                    {account.name}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {account.institution || typeLabel}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-gray-900 group-hover:text-bloom-600 transition-colors">
+                      {account.name}
+                    </p>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${typeBadgeColors[account.type] || 'bg-gray-100 text-gray-600'}`}>
+                      {typeLabel}
+                    </span>
+                  </div>
+                  {account.institution && (
+                    <p className="text-xs text-gray-400">
+                      {account.institution}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">

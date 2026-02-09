@@ -4,6 +4,15 @@ import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
 import { AccountsList } from '@/components/net-worth/accounts-list'
 import { NetWorthHistoryChart } from '@/components/net-worth/net-worth-history-chart'
+import { MomentumCard } from '@/components/net-worth/momentum-card'
+import { MilestoneProgress } from '@/components/net-worth/milestone-progress'
+import {
+  calculateMonthlyChange,
+  calculateAvgMonthlyChange,
+  getNextMilestone,
+  projectArrivalDate,
+  generateProjectionData,
+} from '@/lib/net-worth-calculations'
 
 export default async function NetWorthPage() {
   const supabase = await createClient()
@@ -11,19 +20,24 @@ export default async function NetWorthPage() {
 
   if (!user) return null
 
-  const { data: accounts } = await supabase
-    .from('accounts')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('type')
-    .order('name')
-
-  // Fetch net worth snapshots for history chart
-  const { data: snapshots } = await supabase
-    .from('net_worth_snapshots')
-    .select('snapshot_date, net_worth, total_assets, total_liabilities')
-    .eq('user_id', user.id)
-    .order('snapshot_date', { ascending: true })
+  const [{ data: accounts }, { data: snapshots }, { data: goals }] = await Promise.all([
+    supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('type')
+      .order('name'),
+    supabase
+      .from('net_worth_snapshots')
+      .select('snapshot_date, net_worth, total_assets, total_liabilities')
+      .eq('user_id', user.id)
+      .order('snapshot_date', { ascending: true }),
+    supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active'),
+  ])
 
   // Create/update today's snapshot if there are accounts
   if (accounts && accounts.length > 0) {
@@ -46,8 +60,46 @@ export default async function NetWorthPage() {
   const totalLiabilities = liabilities.reduce((sum, a) => sum + Number(a.balance), 0)
   const netWorth = totalAssets - totalLiabilities
 
+  // Calculations for momentum, projections, milestones
+  const snapshotData = snapshots || []
+  const hasEnoughSnapshots = snapshotData.length >= 2
+
+  const { monthlyChange, lastMonthChange } = hasEnoughSnapshots
+    ? calculateMonthlyChange(snapshotData, netWorth)
+    : { monthlyChange: 0, lastMonthChange: null }
+
+  const avgMonthlyChange = hasEnoughSnapshots
+    ? calculateAvgMonthlyChange(snapshotData, netWorth)
+    : 0
+
+  const activeGoals = (goals || []).map(g => ({
+    id: g.id,
+    name: g.name,
+    target_amount: Number(g.target_amount),
+    goal_type: g.goal_type as 'savings' | 'debt_payoff',
+  }))
+
+  const milestone = getNextMilestone(netWorth, activeGoals)
+
+  const projectedArrival = milestone
+    ? projectArrivalDate(netWorth, milestone.amount, avgMonthlyChange)
+    : null
+
+  const projectionData = milestone && avgMonthlyChange > 0
+    ? generateProjectionData(netWorth, avgMonthlyChange, milestone.amount)
+    : []
+
+  // Goals for chart reference lines
+  const chartGoals = (goals || []).map(g => ({
+    id: g.id,
+    name: g.name,
+    target_amount: Number(g.target_amount),
+    goal_type: g.goal_type,
+  }))
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-gray-900">Net Worth</h1>
@@ -59,33 +111,48 @@ export default async function NetWorthPage() {
         </Link>
       </div>
 
-      {/* Net Worth Card */}
-      <div className={`card ${netWorth >= 0 ? 'bg-gradient-to-br from-sprout-50 to-bloom-50' : 'bg-gradient-to-br from-red-50 to-coral-50'}`}>
+      {/* Hero Net Worth Number */}
+      <div className={`card text-center ${netWorth >= 0 ? 'bg-gradient-to-br from-sprout-50 to-bloom-50' : 'bg-gradient-to-br from-red-50 to-coral-50'}`}>
         <p className="text-sm text-gray-600">Total Net Worth</p>
-        <p className={`text-4xl font-bold mt-1 ${netWorth >= 0 ? 'text-sprout-600' : 'text-red-600'}`}>
+        <p className={`text-5xl font-bold mt-1 ${netWorth >= 0 ? 'text-sprout-600' : 'text-red-600'}`}>
           {formatCurrency(netWorth)}
         </p>
-
-        {/* Assets & Liabilities Summary */}
-        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-200/50">
-          <div>
-            <div className="flex items-center gap-1.5 text-sprout-600 mb-1">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-xs font-medium">Assets</span>
-            </div>
-            <p className="text-lg font-bold text-gray-900">{formatCurrency(totalAssets)}</p>
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5 text-red-500 mb-1">
-              <TrendingDown className="w-4 h-4" />
-              <span className="text-xs font-medium">Liabilities</span>
-            </div>
-            <p className="text-lg font-bold text-gray-900">{formatCurrency(totalLiabilities)}</p>
-          </div>
-        </div>
       </div>
 
-      {/* Debt Planner Link - shown when net worth is negative */}
+      {/* Momentum Card */}
+      {hasEnoughSnapshots && (monthlyChange !== 0 || lastMonthChange !== null) && (
+        <MomentumCard
+          monthlyChange={monthlyChange}
+          lastMonthChange={lastMonthChange}
+          netWorth={netWorth}
+        />
+      )}
+
+      {/* Net Worth History Chart — "Your Journey" */}
+      {snapshotData.length > 1 && (
+        <section className="card">
+          <h2 className="font-display font-semibold text-gray-900 mb-4">Your Journey</h2>
+          <NetWorthHistoryChart
+            data={snapshotData}
+            projectionData={projectionData}
+            nextMilestone={milestone || undefined}
+            goals={chartGoals}
+          />
+        </section>
+      )}
+
+      {/* Milestone Progress */}
+      {milestone && hasEnoughSnapshots && (
+        <MilestoneProgress
+          currentNetWorth={netWorth}
+          nextMilestone={milestone.amount}
+          milestoneName={milestone.name}
+          projectedArrivalDate={projectedArrival ? projectedArrival.toISOString() : null}
+          avgMonthlyChange={avgMonthlyChange}
+        />
+      )}
+
+      {/* Debt Planner Link */}
       {netWorth < 0 && totalLiabilities > 0 && (
         <Link
           href="/debt-planner"
@@ -104,7 +171,7 @@ export default async function NetWorthPage() {
         </Link>
       )}
 
-      {/* Social/Leaderboard Link */}
+      {/* Leaderboard Link */}
       <Link
         href="/leaderboard"
         className="card flex items-center justify-between hover:bg-gray-50 transition-colors"
@@ -121,12 +188,24 @@ export default async function NetWorthPage() {
         <ChevronRight className="w-5 h-5 text-gray-400" />
       </Link>
 
-      {/* Net Worth History Chart */}
-      {snapshots && snapshots.length > 1 && (
-        <section className="card">
-          <h2 className="font-display font-semibold text-gray-900 mb-4">History</h2>
-          <NetWorthHistoryChart data={snapshots} />
-        </section>
+      {/* Assets & Liabilities Summary (moved from hero) */}
+      {(accounts?.length ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="card">
+            <div className="flex items-center gap-1.5 text-sprout-600 mb-1">
+              <TrendingUp className="w-4 h-4" />
+              <span className="text-xs font-medium">Assets</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(totalAssets)}</p>
+          </div>
+          <div className="card">
+            <div className="flex items-center gap-1.5 text-red-500 mb-1">
+              <TrendingDown className="w-4 h-4" />
+              <span className="text-xs font-medium">Liabilities</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(totalLiabilities)}</p>
+          </div>
+        </div>
       )}
 
       {/* Bank Accounts & Cash */}

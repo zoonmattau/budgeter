@@ -401,18 +401,24 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // Calculate daily spending stats for insights teaser
   // Discretionary budget excludes fixed costs (rent, bills, housing, insurance)
-  const fixedCostKeywords = ['rent', 'mortgage', 'housing', 'home loan', 'bills', 'utilities', 'electricity', 'gas', 'water', 'internet', 'phone', 'insurance']
+  const fixedCostKeywords = ['rent', 'mortgage', 'housing', 'home loan', 'bills', 'utilities', 'electricity', 'gas', 'water', 'internet', 'phone', 'insurance', 'household', 'contribution']
   const discretionaryBudgets = budgets?.filter(b => {
     const name = (b.categories?.name || '').toLowerCase()
     return !fixedCostKeywords.some(k => name.includes(k))
   }) || []
   const discretionaryAllocated = discretionaryBudgets.reduce((sum, b) => sum + Number(b.allocated), 0)
-  const fixedCategoryIds = new Set(
-    budgets?.filter(b => {
-      const name = (b.categories?.name || '').toLowerCase()
-      return fixedCostKeywords.some(k => name.includes(k))
-    }).map(b => b.category_id) || []
-  )
+  // Build fixed category IDs from both budgets AND expense categories so that
+  // household/contribution transactions are excluded from discretionary spending
+  // even if the user doesn't have a budget allocation for that category
+  const fixedBudgetCategoryIds = budgets?.filter(b => {
+    const name = (b.categories?.name || '').toLowerCase()
+    return fixedCostKeywords.some(k => name.includes(k))
+  }).map(b => b.category_id) || []
+  const fixedExpenseCategoryIds = expenseCategories?.filter(c => {
+    const name = (c.name || '').toLowerCase()
+    return fixedCostKeywords.some(k => name.includes(k))
+  }).map(c => c.id) || []
+  const fixedCategoryIds = new Set([...fixedBudgetCategoryIds, ...fixedExpenseCategoryIds])
   const discretionarySpent = transactions
     ?.filter(t => t.type === 'expense' && !fixedCategoryIds.has(t.category_id))
     .reduce((sum, t) => sum + Number(t.amount), 0) || 0
@@ -428,6 +434,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const totalDebtPayments = monthlyDebtPayments + extraDebtPayment
   if (totalDebtPayments > 0) fixedCostItems.push({ name: 'Debt repayments', amount: Math.round(totalDebtPayments) })
   if (monthlySinkingFunds > 0) fixedCostItems.push({ name: 'Sinking funds', amount: Math.round(monthlySinkingFunds) })
+  if (householdContributionCost > 0) fixedCostItems.push({ name: 'Household contribution', amount: Math.round(householdContributionCost) })
 
   const daysInMonth = new Date().getDate()
   const dailyAverage = daysInMonth > 0 ? discretionarySpent / daysInMonth : 0

@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import {
-  AreaChart,
+  ComposedChart,
   Area,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -19,23 +20,39 @@ interface NetWorthHistoryChartProps {
     total_assets: number
     total_liabilities: number
   }[]
+  projectionData?: { date: string; projectedNetWorth: number }[]
+  nextMilestone?: { amount: number; name: string }
+  goals?: { id: string; name: string; target_amount: number; goal_type: string }[]
   height?: number
 }
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | 'ALL'
 
-export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChartProps) {
+interface ChartPoint {
+  date: string
+  label: string
+  netWorth?: number
+  projectedNetWorth?: number
+}
+
+export function NetWorthHistoryChart({
+  data,
+  projectionData,
+  nextMilestone,
+  goals,
+  height = 250,
+}: NetWorthHistoryChartProps) {
   const [range, setRange] = useState<TimeRange>('3M')
 
   const filteredData = filterDataByRange(data, range)
 
-  const chartData = filteredData.map((d) => ({
+  const historicalPoints: ChartPoint[] = filteredData.map((d) => ({
     date: d.snapshot_date,
     netWorth: Number(d.net_worth),
     label: formatDateLabel(d.snapshot_date),
   }))
 
-  if (chartData.length === 0) {
+  if (historicalPoints.length === 0) {
     return (
       <div className="space-y-4">
         <TimeRangeSelector range={range} setRange={setRange} />
@@ -49,19 +66,54 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
     )
   }
 
-  const minValue = Math.min(...chartData.map((d) => d.netWorth))
-  const maxValue = Math.max(...chartData.map((d) => d.netWorth))
-  const currentNetWorth = chartData[chartData.length - 1]?.netWorth ?? 0
+  // Build merged dataset: historical + projection
+  const chartData: ChartPoint[] = [...historicalPoints]
+
+  // Bridge: last historical point also gets projectedNetWorth so lines connect
+  if (projectionData && projectionData.length > 0 && chartData.length > 0) {
+    const lastHistorical = chartData[chartData.length - 1]
+    lastHistorical.projectedNetWorth = lastHistorical.netWorth
+
+    for (const p of projectionData) {
+      chartData.push({
+        date: p.date,
+        label: formatDateLabel(p.date),
+        projectedNetWorth: p.projectedNetWorth,
+      })
+    }
+  }
+
+  // Collect all values for domain calculation
+  const allValues = chartData.flatMap((d) => {
+    const vals: number[] = []
+    if (d.netWorth !== undefined) vals.push(d.netWorth)
+    if (d.projectedNetWorth !== undefined) vals.push(d.projectedNetWorth)
+    return vals
+  })
+
+  // Include milestone and goal values in domain
+  const referenceValues: number[] = []
+  if (nextMilestone) referenceValues.push(nextMilestone.amount)
+  const currentNetWorth = historicalPoints[historicalPoints.length - 1]?.netWorth ?? 0
+  if (goals) {
+    for (const g of goals) {
+      if (g.goal_type === 'savings' && Number(g.target_amount) <= currentNetWorth * 3 && Number(g.target_amount) > 0) {
+        referenceValues.push(Number(g.target_amount))
+      }
+    }
+  }
+
+  const minValue = Math.min(...allValues, ...referenceValues)
+  const maxValue = Math.max(...allValues, ...referenceValues)
   const isCurrentlyNegative = currentNetWorth < 0
 
-  // Calculate nice round numbers for Y-axis
   const { domainMin, domainMax, ticks } = calculateNiceScale(minValue, maxValue)
 
   return (
     <div className="space-y-4">
       <TimeRangeSelector range={range} setRange={setRange} />
       <ChartWrapper height={height}>
-        <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -92,7 +144,10 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
           />
 
           <Tooltip
-            formatter={(value) => [`$${Number(value).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Net Worth']}
+            formatter={(value, name) => {
+              const label = name === 'projectedNetWorth' ? 'Projected' : 'Net Worth'
+              return [`$${Number(value).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, label]
+            }}
             contentStyle={{
               borderRadius: '12px',
               border: 'none',
@@ -102,7 +157,7 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
             labelStyle={{ fontWeight: 600 }}
           />
 
-          {/* Always show zero line to visualize distance from $0 */}
+          {/* Zero reference line */}
           <ReferenceLine
             y={0}
             stroke="#9ca3af"
@@ -110,14 +165,67 @@ export function NetWorthHistoryChart({ data, height = 250 }: NetWorthHistoryChar
             strokeWidth={1}
           />
 
+          {/* Milestone reference line */}
+          {nextMilestone && (
+            <ReferenceLine
+              y={nextMilestone.amount}
+              stroke="#a855f7"
+              strokeDasharray="6 4"
+              strokeWidth={1.5}
+              label={{
+                value: nextMilestone.name,
+                position: 'right',
+                fill: '#a855f7',
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            />
+          )}
+
+          {/* Goal reference lines */}
+          {goals?.filter(g =>
+            g.goal_type === 'savings' &&
+            Number(g.target_amount) > currentNetWorth &&
+            Number(g.target_amount) <= currentNetWorth * 3
+          ).map((g) => (
+            <ReferenceLine
+              key={g.id}
+              y={Number(g.target_amount)}
+              stroke="#f59e0b"
+              strokeDasharray="4 4"
+              strokeWidth={1}
+              label={{
+                value: g.name,
+                position: 'right',
+                fill: '#f59e0b',
+                fontSize: 10,
+              }}
+            />
+          ))}
+
+          {/* Historical area */}
           <Area
             type="monotone"
             dataKey="netWorth"
             stroke={isCurrentlyNegative ? '#ef4444' : '#22c55e'}
             strokeWidth={2}
             fill={isCurrentlyNegative ? 'url(#netWorthGradientNegative)' : 'url(#netWorthGradient)'}
+            connectNulls={false}
           />
-        </AreaChart>
+
+          {/* Projection line */}
+          {projectionData && projectionData.length > 0 && (
+            <Line
+              type="monotone"
+              dataKey="projectedNetWorth"
+              stroke="#22c55e"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={false}
+              connectNulls={false}
+            />
+          )}
+        </ComposedChart>
       </ChartWrapper>
     </div>
   )
