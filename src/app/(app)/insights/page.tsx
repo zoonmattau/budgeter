@@ -30,7 +30,7 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
 
   const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd')
   const today = format(new Date(), 'yyyy-MM-dd')
-  const ninetyDaysAgo = format(subDays(new Date(), 90), 'yyyy-MM-dd')
+  const oneYearAgo = format(subDays(new Date(), 365), 'yyyy-MM-dd')
 
   // Get last 12 months for income history
   const months: string[] = []
@@ -46,13 +46,14 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
     { data: allIncomeEntries },
     { data: netWorthSnapshots },
     { data: investmentAccounts },
+    { data: bills },
   ] = await Promise.all([
     isHousehold
       ? supabase
           .from('transactions')
           .select('*, categories(*)')
           .eq('household_id', householdId)
-          .gte('date', ninetyDaysAgo)
+          .gte('date', oneYearAgo)
           .lte('date', today)
           .order('date', { ascending: true })
       : supabase
@@ -60,7 +61,7 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
           .select('*, categories(*)')
           .eq('user_id', user.id)
           .is('household_id', null)
-          .gte('date', ninetyDaysAgo)
+          .gte('date', oneYearAgo)
           .lte('date', today)
           .order('date', { ascending: true }),
     isHousehold
@@ -114,6 +115,17 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
       .eq('user_id', user.id)
       .is('household_id', null)
       .eq('type', 'investment'),
+    // Bills for recurring tracking
+    isHousehold
+      ? supabase
+          .from('bills')
+          .select('*, categories(*)')
+          .eq('household_id', householdId)
+      : supabase
+          .from('bills')
+          .select('*, categories(*)')
+          .eq('user_id', user.id)
+          .is('household_id', null),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
@@ -168,6 +180,7 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
         netWorthHistory={netWorthHistory}
         currentInvestments={currentInvestments}
         investmentAccounts={investmentAccounts || []}
+        bills={bills || []}
       />
     </div>
   )

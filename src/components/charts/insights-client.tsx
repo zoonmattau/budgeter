@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { TrendingUp, DollarSign, PiggyBank, Briefcase } from 'lucide-react'
+import { TrendingUp, DollarSign, PiggyBank, Briefcase, Repeat, CreditCard, ChevronDown, ChevronUp } from 'lucide-react'
 import { SpendingDonut } from './spending-donut'
 import { SpendingTrend } from './spending-trend'
 import { CategoryBarChart } from './category-bar-chart'
@@ -23,7 +23,11 @@ type Budget = Tables<'budgets'> & {
   categories: Tables<'categories'> | null
 }
 
-type TimePeriod = '7' | '30' | '90'
+type Bill = Tables<'bills'> & {
+  categories: Tables<'categories'> | null
+}
+
+type TimePeriod = '7' | '30' | '90' | '180' | '365'
 
 interface IncomeMonth {
   month: string
@@ -50,6 +54,7 @@ interface InsightsClientProps {
   netWorthHistory?: NetWorthSnapshot[]
   currentInvestments?: number
   investmentAccounts?: Tables<'accounts'>[]
+  bills?: Bill[]
 }
 
 export function InsightsClient({
@@ -62,10 +67,12 @@ export function InsightsClient({
   netWorthHistory = [],
   currentInvestments = 0,
   investmentAccounts = [],
+  bills = [],
 }: InsightsClientProps) {
   const [period, setPeriod] = useState<TimePeriod>('30')
-  const [activeTab, setActiveTab] = useState<'spending' | 'income' | 'investments'>('spending')
+  const [activeTab, setActiveTab] = useState<'spending' | 'income' | 'investments' | 'bills'>('spending')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [expandedBillId, setExpandedBillId] = useState<string | null>(null)
 
   const days = parseInt(period)
 
@@ -145,6 +152,14 @@ export function InsightsClient({
         >
           Investments
         </button>
+        <button
+          onClick={() => setActiveTab('bills')}
+          className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'bills' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
+          }`}
+        >
+          Bills
+        </button>
       </div>
 
       {/* SPENDING TAB */}
@@ -153,9 +168,11 @@ export function InsightsClient({
           {/* Period selector */}
           <TogglePills
             options={[
-              { value: '7', label: '7 days' },
-              { value: '30', label: '30 days' },
-              { value: '90', label: '90 days' },
+              { value: '7', label: '7d' },
+              { value: '30', label: '30d' },
+              { value: '90', label: '90d' },
+              { value: '180', label: '6mo' },
+              { value: '365', label: '1yr' },
             ]}
             value={period}
             onChange={setPeriod}
@@ -504,6 +521,236 @@ export function InsightsClient({
           )}
         </>
       )}
+
+      {/* BILLS & RECURRING TAB */}
+      {activeTab === 'bills' && (() => {
+        // Filter expenses for selected period
+        const expenses = filteredTransactions.filter(t => t.type === 'expense')
+        const recurringExpenses = expenses.filter(t => t.is_recurring)
+        const oneOffExpenses = expenses.filter(t => !t.is_recurring)
+
+        const totalRecurring = recurringExpenses.reduce((sum, t) => sum + Number(t.amount), 0)
+        const totalOneOff = oneOffExpenses.reduce((sum, t) => sum + Number(t.amount), 0)
+        const activeBills = bills.filter(b => b.is_active)
+
+        // Monthly estimated cost from active bills
+        const monthlyBillCost = activeBills.reduce((sum, b) => {
+          const amount = Number(b.amount)
+          switch (b.frequency) {
+            case 'weekly': return sum + amount * 52 / 12
+            case 'fortnightly': return sum + amount * 26 / 12
+            case 'monthly': return sum + amount
+            case 'quarterly': return sum + amount / 3
+            case 'yearly': return sum + amount / 12
+            default: return sum + amount
+          }
+        }, 0)
+
+        // Bill-linked transactions grouped by month
+        const billTransactions = expenses.filter(t => t.bill_id)
+        const billsByMonth: Record<string, number> = {}
+        billTransactions.forEach(t => {
+          const monthKey = t.date.substring(0, 7) // YYYY-MM
+          billsByMonth[monthKey] = (billsByMonth[monthKey] || 0) + Number(t.amount)
+        })
+        const billMonthEntries = Object.entries(billsByMonth)
+          .sort(([a], [b]) => a.localeCompare(b))
+        const maxBillMonth = Math.max(...billMonthEntries.map(([, v]) => v), 1)
+
+        // Per-bill tracking: group bill-linked transactions by bill
+        const billSpending = activeBills.map(bill => {
+          const txns = expenses.filter(t => t.bill_id === bill.id)
+          const totalPaid = txns.reduce((sum, t) => sum + Number(t.amount), 0)
+          return {
+            bill,
+            transactions: txns.sort((a, b) => b.date.localeCompare(a.date)),
+            totalPaid,
+            categoryName: bill.categories?.name || 'Uncategorized',
+          }
+        }).sort((a, b) => b.totalPaid - a.totalPaid)
+
+        // Recurring vs one-off bar widths
+        const maxSplit = Math.max(totalRecurring, totalOneOff, 1)
+
+        return (
+          <>
+            {/* Period selector */}
+            <TogglePills
+              options={[
+                { value: '7', label: '7d' },
+                { value: '30', label: '30d' },
+                { value: '90', label: '90d' },
+                { value: '180', label: '6mo' },
+                { value: '365', label: '1yr' },
+              ]}
+              value={period}
+              onChange={setPeriod}
+            />
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="card">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Repeat className="w-3.5 h-3.5 text-bloom-500" />
+                  <p className="text-[11px] text-gray-500">Recurring/mo</p>
+                </div>
+                <p className="text-lg font-bold text-bloom-600">{formatCurrency(monthlyBillCost)}</p>
+              </div>
+              <div className="card">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <CreditCard className="w-3.5 h-3.5 text-gray-500" />
+                  <p className="text-[11px] text-gray-500">One-off</p>
+                </div>
+                <p className="text-lg font-bold text-gray-900">{formatCurrency(totalOneOff)}</p>
+                <p className="text-[10px] text-gray-400">last {days}d</p>
+              </div>
+              <div className="card">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <DollarSign className="w-3.5 h-3.5 text-sprout-500" />
+                  <p className="text-[11px] text-gray-500">Active bills</p>
+                </div>
+                <p className="text-lg font-bold text-sprout-600">{activeBills.length}</p>
+              </div>
+            </div>
+
+            {/* Recurring vs One-Off comparison */}
+            <section className="card">
+              <h2 className="font-display font-semibold text-gray-900 mb-4">
+                Recurring vs One-Off
+              </h2>
+              <div className="space-y-3">
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-600">Recurring</span>
+                    <span className="font-semibold text-gray-900">{formatCurrency(totalRecurring)}</span>
+                  </div>
+                  <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-bloom-400 rounded-full transition-all duration-500"
+                      style={{ width: `${(totalRecurring / maxSplit) * 100}%` }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-600">One-off</span>
+                    <span className="font-semibold text-gray-900">{formatCurrency(totalOneOff)}</span>
+                  </div>
+                  <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gray-400 rounded-full transition-all duration-500"
+                      style={{ width: `${(totalOneOff / maxSplit) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-3 text-center">
+                {totalSpent > 0 ? `${((totalRecurring / totalSpent) * 100).toFixed(0)}% of spending is recurring` : 'No spending data'}
+              </p>
+            </section>
+
+            {/* Bills Over Time */}
+            {billMonthEntries.length > 0 && (
+              <section className="card">
+                <h2 className="font-display font-semibold text-gray-900 mb-4">
+                  Bill Payments Over Time
+                </h2>
+                <div>
+                  <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                    <span>{formatCurrency(maxBillMonth)}</span>
+                  </div>
+                  <div className="flex items-end gap-1 h-32 border-b border-gray-200">
+                    {billMonthEntries.map(([month, amount]) => {
+                      const heightPercent = maxBillMonth > 0 ? (amount / maxBillMonth) * 100 : 0
+                      return (
+                        <div key={month} className="flex-1 flex flex-col items-center justify-end h-full">
+                          <div
+                            className="w-full rounded-t bg-bloom-400 min-h-[2px] transition-all"
+                            style={{ height: `${Math.max(heightPercent, amount > 0 ? 2 : 0)}%` }}
+                            title={`${month}: ${formatCurrency(amount)}`}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="flex gap-1 mt-1.5">
+                    {billMonthEntries.map(([month], i) => {
+                      const d = new Date(month + '-01T00:00:00')
+                      const label = d.toLocaleDateString('en-AU', { month: 'short' })
+                      return (
+                        <div key={month} className="flex-1 text-center">
+                          <span className="text-[10px] text-gray-400">
+                            {billMonthEntries.length <= 6 || i % 2 === 0 ? label : ''}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Individual Bill Tracking */}
+            {billSpending.length > 0 && (
+              <section className="card">
+                <h2 className="font-display font-semibold text-gray-900 mb-4">
+                  Bill Breakdown
+                </h2>
+                <div className="space-y-1">
+                  {billSpending.map(({ bill, transactions: txns, totalPaid, categoryName }) => (
+                    <div key={bill.id}>
+                      <button
+                        onClick={() => setExpandedBillId(expandedBillId === bill.id ? null : bill.id)}
+                        className="w-full flex items-center justify-between py-2.5 border-b border-gray-50 hover:bg-gray-50 -mx-1 px-1 rounded transition-colors"
+                      >
+                        <div className="text-left min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">{bill.name}</p>
+                          <p className="text-xs text-gray-400">{categoryName} &middot; {formatCurrency(Number(bill.amount))}/{bill.frequency}</p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-3">
+                          <span className="text-sm font-semibold text-gray-700">{formatCurrency(totalPaid)}</span>
+                          {expandedBillId === bill.id
+                            ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                            : <ChevronDown className="w-4 h-4 text-gray-400" />
+                          }
+                        </div>
+                      </button>
+                      {expandedBillId === bill.id && txns.length > 0 && (
+                        <div className="pl-3 border-l-2 border-bloom-200 ml-1 mb-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                          {txns.map(t => (
+                            <div key={t.id} className="flex items-center justify-between py-1.5">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs text-gray-600 truncate">{t.description}</p>
+                                <p className="text-[10px] text-gray-400">
+                                  {new Date(t.date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                              </div>
+                              <span className="text-xs font-medium text-gray-600 ml-2">{formatCurrency(Number(t.amount))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {expandedBillId === bill.id && txns.length === 0 && (
+                        <p className="text-xs text-gray-400 py-2 pl-4">No payments in this period</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {activeBills.length === 0 && billSpending.length === 0 && (
+              <div className="card text-center py-12">
+                <Repeat className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="font-medium text-gray-900 mb-2">No Bills Set Up</h3>
+                <p className="text-gray-500 text-sm">
+                  Add bills to track your recurring payments over time.
+                </p>
+              </div>
+            )}
+          </>
+        )
+      })()}
     </div>
   )
 }

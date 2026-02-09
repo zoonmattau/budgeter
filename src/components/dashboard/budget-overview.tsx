@@ -34,6 +34,7 @@ export function BudgetOverview({
   memberBreakdown = [],
 }: BudgetOverviewProps) {
   const [showFixedCosts, setShowFixedCosts] = useState(false)
+  const [showBudgetDetail, setShowBudgetDetail] = useState(false)
 
   const unallocated = totalIncome - totalAllocated
   // Use discretionary amounts for "left to spend" if available
@@ -150,30 +151,74 @@ export function BudgetOverview({
           </div>
         </div>
 
-        {/* Progress bar with pace marker */}
-        <div className="relative mb-3">
-          <div className="h-3 bg-white/20 rounded-full overflow-hidden flex">
-            {/* White portion: spending up to the pace marker */}
-            <div
-              className="h-full bg-white transition-all duration-500"
-              style={{ width: `${Math.min(spentPercentage, expectedPacePct, 100)}%` }}
-            />
-            {/* Red portion: spending beyond the pace marker */}
-            {spentPercentage > expectedPacePct && (
+        {/* Progress bar with pace marker — tap to expand details */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setShowBudgetDetail(!showBudgetDetail)
+          }}
+          className="w-full text-left mb-3"
+        >
+          <div className="relative">
+            <div className="h-3 bg-white/20 rounded-full overflow-hidden flex">
+              {/* White portion: spending up to the pace marker */}
               <div
-                className="h-full bg-coral-400 transition-all duration-500"
-                style={{ width: `${Math.min(spentPercentage - expectedPacePct, 100 - expectedPacePct)}%` }}
+                className="h-full bg-white transition-all duration-500"
+                style={{ width: `${Math.min(spentPercentage, expectedPacePct, 100)}%` }}
               />
-            )}
+              {/* Red portion: spending beyond the pace marker */}
+              {spentPercentage > expectedPacePct && (
+                <div
+                  className="h-full bg-coral-400 transition-all duration-500"
+                  style={{ width: `${Math.min(spentPercentage - expectedPacePct, 100 - expectedPacePct)}%` }}
+                />
+              )}
+            </div>
+            {/* Expected pace marker */}
+            <div
+              className="absolute top-0 h-3 flex items-center"
+              style={{ left: `${Math.min(expectedPacePct, 100)}%` }}
+            >
+              <div className="w-0.5 h-5 -mt-1 bg-white/60 rounded-full" />
+            </div>
           </div>
-          {/* Expected pace marker */}
-          <div
-            className="absolute top-0 h-3 flex items-center"
-            style={{ left: `${Math.min(expectedPacePct, 100)}%` }}
-          >
-            <div className="w-0.5 h-5 -mt-1 bg-white/60 rounded-full" />
+          <p className="text-[10px] text-white/50 mt-1 text-center">
+            {showBudgetDetail ? 'tap to hide' : 'tap for details'}
+          </p>
+        </button>
+
+        {/* Budget detail breakdown panel */}
+        {showBudgetDetail && (
+          <div className="mb-3 p-3 bg-white/10 rounded-xl animate-in fade-in slide-in-from-top-1 duration-200 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-white/70">Spent</span>
+              <span className="font-semibold">{formatCurrency(spendableSpent)} of {formatCurrency(spendableAllocated)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/70">Day</span>
+              <span className="font-semibold">{dayOfMonth} of {totalDaysInMonth}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/70">Expected pace</span>
+              <span className="font-semibold">{formatCurrency(dailyBudget * dayOfMonth)} by today</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/70">Actual vs pace</span>
+              <span className={`font-semibold ${spendableSpent <= dailyBudget * dayOfMonth ? 'text-sprout-300' : 'text-coral-300'}`}>
+                {formatCurrency(Math.abs(spendableSpent - dailyBudget * dayOfMonth))}{' '}
+                {spendableSpent <= dailyBudget * dayOfMonth ? 'under' : 'over'}
+              </span>
+            </div>
+            <div className="flex justify-between pt-1 border-t border-white/15">
+              <span className="text-white/70">Remaining</span>
+              <span className={`font-semibold ${isOverBudget ? 'text-coral-300' : ''}`}>
+                {formatCurrency(Math.abs(remaining))} for {daysLeft} days ({formatCurrency(Math.max(0, leftPerDay))}/day)
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex items-center justify-between text-sm">
           <div>
