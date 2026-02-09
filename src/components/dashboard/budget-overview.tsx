@@ -108,6 +108,15 @@ export function BudgetOverview({
   const isUnderAllocated = unallocated > 0
   const fixedCosts = totalAllocated - spendableAllocated
 
+  // Daily budget calculations
+  const now = new Date()
+  const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const dayOfMonth = now.getDate()
+  const daysLeft = totalDaysInMonth - dayOfMonth + 1 // including today
+  const dailyBudget = spendableAllocated / totalDaysInMonth
+  const leftPerDay = daysLeft > 0 ? remaining / daysLeft : 0
+  const dailyDiff = leftPerDay - dailyBudget
+
   return (
     <div className="relative">
       <Link href="/budget" className="block card bg-gradient-to-br from-bloom-500 to-bloom-600 text-white hover:from-bloom-600 hover:to-bloom-700 transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]">
@@ -162,6 +171,27 @@ export function BudgetOverview({
             </p>
           </div>
         </div>
+
+        {/* Daily budget info */}
+        {spendableAllocated > 0 && (
+          <div className="mt-3 pt-3 border-t border-white/20 flex items-center justify-between text-sm">
+            <div>
+              <p className="text-bloom-100 text-xs">Per day ({daysLeft}d left)</p>
+              <p className={`font-semibold ${isOverBudget ? 'text-coral-300' : ''}`}>
+                {formatCurrency(Math.max(0, leftPerDay))}/day
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-bloom-100 text-xs">vs daily budget</p>
+              <p className={`font-semibold ${dailyDiff >= 0 ? '' : 'text-coral-300'}`}>
+                {dailyDiff >= 0
+                  ? `${formatCurrency(dailyDiff)} under`
+                  : `${formatCurrency(Math.abs(dailyDiff))} over`
+                }
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Member breakdown for household view */}
         {isHousehold && memberBreakdown.length > 0 && totalSpent > 0 && (
