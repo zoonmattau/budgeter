@@ -161,7 +161,7 @@ export function BudgetOverview({
           }}
           className="w-full text-left mb-3"
         >
-          <div className="relative">
+          <div className="relative mb-1">
             <div className="h-3 bg-white/20 rounded-full overflow-hidden flex">
               {/* White portion: spending up to the pace marker */}
               <div
@@ -176,20 +176,26 @@ export function BudgetOverview({
                 />
               )}
             </div>
-            {/* Expected pace marker with label */}
+            {/* Expected pace marker tick */}
             <div
-              className="absolute top-0 flex flex-col items-center"
+              className="absolute top-0 h-3 flex items-center"
               style={{ left: `${Math.min(expectedPacePct, 100)}%` }}
             >
               <div className="w-0.5 h-5 -mt-1 bg-white/60 rounded-full" />
-              <span className="text-[9px] text-white/50 -translate-x-1/2 whitespace-nowrap mt-0.5">
-                day {dayOfMonth} pace
-              </span>
             </div>
           </div>
-          <p className="text-[10px] text-white/40 mt-2.5 text-center">
-            {showBudgetDetail ? 'tap to hide' : 'tap bar for details'}
-          </p>
+          {/* Pace label + tap hint on one line */}
+          <div className="flex items-center justify-between">
+            <span
+              className="text-[9px] text-white/50"
+              style={{ paddingLeft: `${Math.max(0, Math.min(expectedPacePct, 100) - 5)}%` }}
+            >
+              ↑ day {dayOfMonth} pace
+            </span>
+            <span className="text-[9px] text-white/40">
+              {showBudgetDetail ? 'tap to hide' : 'tap for details'}
+            </span>
+          </div>
         </button>
 
         {/* Budget detail breakdown panel */}
