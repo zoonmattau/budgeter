@@ -176,17 +176,17 @@ export function BudgetOverview({
         {spendableAllocated > 0 && (
           <div className="mt-3 pt-3 border-t border-white/20 flex items-center justify-between text-sm">
             <div>
-              <p className="text-bloom-100 text-xs">Per day ({daysLeft}d left)</p>
+              <p className="text-bloom-100 text-xs">You can spend ({daysLeft}d left)</p>
               <p className={`font-semibold ${isOverBudget ? 'text-coral-300' : ''}`}>
                 {formatCurrency(Math.max(0, leftPerDay))}/day
               </p>
             </div>
             <div className="text-right">
-              <p className="text-bloom-100 text-xs">vs daily budget</p>
+              <p className="text-bloom-100 text-xs">Daily budget: {formatCurrency(dailyBudget)}</p>
               <p className={`font-semibold ${dailyDiff >= 0 ? '' : 'text-coral-300'}`}>
                 {dailyDiff >= 0
-                  ? `${formatCurrency(dailyDiff)} under`
-                  : `${formatCurrency(Math.abs(dailyDiff))} over`
+                  ? `${formatCurrency(dailyDiff)}/day under`
+                  : `${formatCurrency(Math.abs(dailyDiff))}/day over`
                 }
               </p>
             </div>
