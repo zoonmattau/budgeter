@@ -132,6 +132,13 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
         <h1 className="font-display text-2xl font-bold text-gray-900">New Goal</h1>
       </div>
 
+      {/* DEBUG — remove after testing */}
+      {goalType === 'net_worth_milestone' && (
+        <div className="p-3 bg-yellow-50 rounded-lg text-xs font-mono text-yellow-800">
+          netWorth={currentNetWorth} | growth={avgMonthlyGrowth.toFixed(2)}/mo | target={targetAmount || 'none'} | quickDates={quickDates ? quickDates.length : 'null'}
+        </div>
+      )}
+
       {/* Goal Type Selector */}
       <div>
         <p className="text-sm text-gray-500 mb-3">What type of goal?</p>
