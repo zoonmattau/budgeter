@@ -176,10 +176,10 @@ export default async function LeaderboardPage() {
   const friendsRankYearAgo = yearAgoNW !== null ? computeRank(yearAgoNW, allFriendsNetWorths) : null
 
   // Build leaderboard entries for display
-  // Global: anonymous entries + user's own entry with net worth
-  const anonymizedGlobal = allGlobalNetWorths
-    .sort((a, b) => b - a)
-    .map((_, i) => ({ rank: i + 1, isUser: false, displayName: null as string | null, netWorth: null as number | null }))
+  // Global: anonymous names but show net worth values for everyone
+  const sortedGlobalNetWorths = allGlobalNetWorths.sort((a, b) => b - a)
+  const anonymizedGlobal = sortedGlobalNetWorths
+    .map((nw, i) => ({ rank: i + 1, isUser: false, displayName: null as string | null, netWorth: nw }))
 
   // Insert user at their rank position
   anonymizedGlobal.splice(globalRank - 1, 0, { rank: globalRank, isUser: true, displayName: null, netWorth: userNetWorth })
