@@ -42,9 +42,9 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
   const supabase = createClient()
 
   const milestonePreview = useMemo(() => {
-    if (!targetAmount) return null
+    if (targetAmount === '' || targetAmount === undefined) return null
     const target = parseFloat(targetAmount)
-    if (isNaN(target) || target <= 0) return null
+    if (isNaN(target) || target < 0) return null
     return calculateMilestoneInfo(currentNetWorth, target, avgMonthlyGrowth, deadline || null)
   }, [currentNetWorth, targetAmount, avgMonthlyGrowth, deadline])
 
@@ -495,7 +495,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                   </>
                 ) : (
                   <p className="text-sm text-gray-500">
-                    {!targetAmount ? 'Enter a target amount to see your chances' : 'Enter a target above $0'}
+                    {!targetAmount ? 'Enter a target amount to see your chances' : 'Enter a valid target amount to see your chances'}
                   </p>
                 )}
               </div>
