@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2, Plus, CreditCard, CheckCircle2, Users } from 'lucide-react'
+import { ArrowLeft, Trash2, Plus, CreditCard, CheckCircle2, Users, TrendingUp } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
@@ -40,6 +40,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
   const supabase = createClient()
 
   const isDebtPayoff = goal.goal_type === 'debt_payoff'
+  const isNetWorthMilestone = goal.goal_type === 'net_worth_milestone'
   const isCompleted = goal.status === 'completed'
   const progress = Number(goal.target_amount) > 0
     ? (Number(currentAmount) / Number(goal.target_amount)) * 100
@@ -197,7 +198,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
       </div>
 
       {/* Progress Card */}
-      <div className={`card ${isDebtPayoff ? 'bg-gradient-to-br from-red-50 to-coral-50' : 'bg-gradient-to-br from-sprout-50 to-bloom-50'}`}>
+      <div className={`card ${isDebtPayoff ? 'bg-gradient-to-br from-red-50 to-coral-50' : isNetWorthMilestone ? 'bg-gradient-to-br from-blue-50 to-indigo-50' : 'bg-gradient-to-br from-sprout-50 to-bloom-50'}`}>
         <div className="flex items-center gap-4">
           <div className="flex-shrink-0">
             {isDebtPayoff ? (
@@ -208,6 +209,14 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
                   <CreditCard className="w-10 h-10 text-red-500" />
                 )}
               </div>
+            ) : isNetWorthMilestone ? (
+              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center ${isCompleted ? 'bg-sprout-100' : 'bg-blue-100'}`}>
+                {isCompleted ? (
+                  <CheckCircle2 className="w-10 h-10 text-sprout-600" />
+                ) : (
+                  <TrendingUp className="w-10 h-10 text-blue-500" />
+                )}
+              </div>
             ) : (
               <PlantVisual progress={progress} size="lg" />
             )}
@@ -215,7 +224,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
           <div className="flex-1">
             <h2 className="font-display text-lg font-semibold text-gray-900">{goal.name}</h2>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className={`text-2xl font-bold ${isDebtPayoff ? 'text-red-600' : 'text-bloom-600'}`}>
+              <span className={`text-2xl font-bold ${isDebtPayoff ? 'text-red-600' : isNetWorthMilestone ? 'text-blue-600' : 'text-bloom-600'}`}>
                 {formatCurrency(currentAmount)}
               </span>
               <span className="text-gray-400">of</span>
@@ -223,7 +232,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
             </div>
             <div className="h-2 bg-white/50 rounded-full overflow-hidden mt-2">
               <div
-                className={`h-full rounded-full transition-all ${isDebtPayoff ? 'bg-red-500' : 'bg-sprout-500'}`}
+                className={`h-full rounded-full transition-all ${isDebtPayoff ? 'bg-red-500' : isNetWorthMilestone ? 'bg-blue-500' : 'bg-sprout-500'}`}
                 style={{ width: `${Math.min(progress, 100)}%` }}
               />
             </div>
@@ -231,8 +240,18 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
           </div>
         </div>
 
+        {/* Auto-tracking info for net worth milestones */}
+        {isNetWorthMilestone && !isCompleted && (
+          <div className="mt-4 pt-4 border-t border-white/30">
+            <div className="flex items-center gap-2 text-blue-700 text-sm">
+              <TrendingUp className="w-4 h-4" />
+              <p>This goal auto-tracks your net worth. Progress updates each time you visit your dashboard.</p>
+            </div>
+          </div>
+        )}
+
         {/* Quick Actions */}
-        {!isCompleted && !isDebtPayoff && (
+        {!isCompleted && !isDebtPayoff && !isNetWorthMilestone && (
           <div className="mt-4 pt-4 border-t border-white/30 flex gap-2">
             <button
               onClick={() => setShowAddFunds(!showAddFunds)}
@@ -400,7 +419,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
           />
         </div>
 
-        {!isDebtPayoff && (
+        {!isDebtPayoff && !isNetWorthMilestone && (
           <div>
             <label htmlFor="current-amount" className="label">Current Amount</label>
             <CurrencyInput

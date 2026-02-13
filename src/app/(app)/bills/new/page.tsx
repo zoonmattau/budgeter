@@ -324,7 +324,7 @@ export default function NewBillPage() {
           type="expense"
           onClose={() => setShowCreateCategory(false)}
           onCreated={(newCat) => {
-            setCategories(prev => [...prev, newCat])
+            setCategories(prev => [newCat, ...prev])
             setCategoryId(newCat.id)
             setShowCreateCategory(false)
           }}

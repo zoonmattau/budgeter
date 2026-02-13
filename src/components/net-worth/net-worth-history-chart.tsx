@@ -97,7 +97,7 @@ export function NetWorthHistoryChart({
   const currentNetWorth = historicalPoints[historicalPoints.length - 1]?.netWorth ?? 0
   if (goals) {
     for (const g of goals) {
-      if (g.goal_type === 'savings' && Number(g.target_amount) <= currentNetWorth * 3 && Number(g.target_amount) > 0) {
+      if (g.goal_type === 'savings' || g.goal_type === 'net_worth_milestone' && Number(g.target_amount) <= currentNetWorth * 3 && Number(g.target_amount) > 0) {
         referenceValues.push(Number(g.target_amount))
       }
     }
@@ -184,7 +184,7 @@ export function NetWorthHistoryChart({
 
           {/* Goal reference lines */}
           {goals?.filter(g =>
-            g.goal_type === 'savings' &&
+            g.goal_type === 'savings' || g.goal_type === 'net_worth_milestone' &&
             Number(g.target_amount) > currentNetWorth &&
             Number(g.target_amount) <= currentNetWorth * 3
           ).map((g) => (

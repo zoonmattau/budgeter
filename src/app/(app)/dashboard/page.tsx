@@ -64,12 +64,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // Fetch household members if in household view
   let members: HouseholdMember[] = []
+  let householdContributions: { id: string; source: string; amount: number; is_recurring: boolean; pay_frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'; pay_day: number; next_pay_date: string }[] = []
   if (scope === 'household' && householdId) {
     const { data: householdMembers } = await supabase
       .from('household_members')
       .select(`
         user_id,
         role,
+        contribution_amount,
+        contribution_frequency,
         profiles (
           display_name
         )
@@ -84,6 +87,24 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         role: m.role as 'owner' | 'member',
       }
     })
+
+    // Build contribution schedule for household cashflow
+    householdContributions = (householdMembers || [])
+      .filter(m => m.contribution_amount && Number(m.contribution_amount) > 0)
+      .map(m => {
+        const profile = m.profiles as unknown as { display_name: string | null } | null
+        const name = profile?.display_name || 'Member'
+        const freq = (m.contribution_frequency || 'monthly') as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
+        return {
+          id: `contrib-${m.user_id}`,
+          source: `${name}'s contribution`,
+          amount: Number(m.contribution_amount),
+          is_recurring: true,
+          pay_frequency: freq,
+          pay_day: 1,
+          next_pay_date: getNextContributionDate(freq),
+        }
+      })
   }
 
   // Fetch dashboard data in parallel - scope-aware queries
@@ -396,6 +417,43 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     await Promise.all(updates)
   }
 
+  // Auto-track net worth milestone goals (personal scope only)
+  if (scope === 'personal' && goals) {
+    const milestoneGoals = goals.filter(g => g.goal_type === 'net_worth_milestone' && g.status === 'active')
+    const milestoneUpdates = milestoneGoals.map(async (goal) => {
+      const targetAmount = Number(goal.target_amount) || 0
+      const currentAmount = Number(goal.current_amount) || 0
+
+      if (netWorth >= targetAmount && targetAmount > 0) {
+        // Auto-complete: net worth reached the milestone
+        const { error } = await supabase
+          .from('goals')
+          .update({
+            status: 'completed',
+            current_amount: targetAmount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', goal.id)
+          .eq('status', 'active')
+
+        if (error) console.error('Error completing milestone goal:', error)
+      } else if (Math.abs(netWorth - currentAmount) > 0.01) {
+        // Update current_amount to reflect current net worth
+        const { error } = await supabase
+          .from('goals')
+          .update({
+            current_amount: Math.max(0, netWorth),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', goal.id)
+
+        if (error) console.error('Error updating milestone goal:', error)
+      }
+    })
+
+    await Promise.all(milestoneUpdates)
+  }
+
   // Cast transactions for components
   const typedTransactions = (transactions || []) as (typeof transactions extends (infer T)[] | null ? T & { profiles?: { display_name: string | null } | null } : never)[]
 
@@ -515,7 +573,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         className={`h-full rounded-full ${
                           goal.goal_type === 'debt_payoff'
                             ? 'bg-gradient-to-r from-red-400 to-red-500'
-                            : 'bg-gradient-to-r from-sprout-400 to-sprout-500'
+                            : goal.goal_type === 'net_worth_milestone'
+                              ? 'bg-gradient-to-r from-blue-400 to-blue-500'
+                              : 'bg-gradient-to-r from-sprout-400 to-sprout-500'
                         }`}
                         style={{ width: `${Math.min(progress, 100)}%` }}
                       />
@@ -540,9 +600,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       {/* Cash Flow Preview */}
       <CashflowPreview
         accounts={accounts || []}
-        incomeEntries={recurringIncome || []}
+        incomeEntries={scope === 'household' ? householdContributions : (recurringIncome || [])}
         bills={allBills || []}
-        transactions={typedTransactions.map(t => ({
+        transactions={scope === 'household' ? [] : typedTransactions.map(t => ({
           id: t.id,
           amount: Number(t.amount),
           date: t.date,
@@ -624,7 +684,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       </section>
 
       {/* Quick Add FAB */}
-      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={creditCards} investmentAccounts={investmentAccounts} bankAccounts={bankAccounts} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={creditCards} investmentAccounts={investmentAccounts} bankAccounts={bankAccounts} debtAccounts={accounts?.filter(a => a.type === 'credit' || a.type === 'credit_card' || a.type === 'loan' || a.type === 'debt') || []} />
     </div>
   )
 }
@@ -634,4 +694,30 @@ function getGreeting() {
   if (hour < 12) return 'Good morning'
   if (hour < 17) return 'Good afternoon'
   return 'Good evening'
+}
+
+function getNextContributionDate(frequency: string): string {
+  const today = new Date()
+  const next = new Date(today)
+  // Default to next 1st of the month as a starting anchor
+  next.setDate(1)
+  if (next <= today) {
+    switch (frequency) {
+      case 'weekly':
+        next.setDate(today.getDate() + (7 - today.getDay()))
+        break
+      case 'fortnightly':
+        next.setDate(today.getDate() + 14 - (today.getDate() % 14))
+        break
+      case 'quarterly':
+        next.setMonth(next.getMonth() + 3)
+        break
+      case 'yearly':
+        next.setFullYear(next.getFullYear() + 1)
+        break
+      default: // monthly
+        next.setMonth(next.getMonth() + 1)
+    }
+  }
+  return format(next, 'yyyy-MM-dd')
 }

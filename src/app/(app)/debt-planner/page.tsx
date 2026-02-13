@@ -54,7 +54,7 @@ export default async function DebtPlannerPage() {
       .select('*')
       .eq('user_id', user.id)
       .eq('status', 'active')
-      .neq('goal_type', 'debt_payoff'),
+      .eq('goal_type', 'savings'),
   ])
 
   // Transform accounts to Debt type with original amount for progress tracking

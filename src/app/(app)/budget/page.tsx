@@ -171,7 +171,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       .eq('user_id', user.id)
       .is('household_id', null)
       .eq('status', 'active')
-      .neq('goal_type', 'debt_payoff')
+      .eq('goal_type', 'savings')
       .order('created_at'),
     // Bank accounts for sinking fund contributions
     supabase
@@ -228,22 +228,13 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       })()
     : budgets || []
 
-  // Filter out Interest and Other categories, then sort with rent/mortgage at the top
+  // Filter out Interest and Other categories, then sort by user-defined order
   const sortedCategories = [...(categories || [])]
     .filter(c => {
       const name = c.name.toLowerCase()
       return name !== 'interest' && name !== 'other' && name !== 'interest & other'
     })
-    .sort((a, b) => {
-      const aName = a.name.toLowerCase()
-      const bName = b.name.toLowerCase()
-      const aIsHousing = aName.includes('rent') || aName.includes('mortgage') || aName.includes('housing')
-      const bIsHousing = bName.includes('rent') || bName.includes('mortgage') || bName.includes('housing')
-
-      if (aIsHousing && !bIsHousing) return -1
-      if (!aIsHousing && bIsHousing) return 1
-      return (a.sort_order || 0) - (b.sort_order || 0)
-    })
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
 
   // Calculate spent per category
   const spentByCategory = (transactions || []).reduce((acc, t) => {

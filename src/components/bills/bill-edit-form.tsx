@@ -480,7 +480,7 @@ export function BillEditForm({ bill }: BillEditFormProps) {
           type="expense"
           onClose={() => setShowCreateCategory(false)}
           onCreated={(newCat) => {
-            setCategories(prev => [...prev, newCat])
+            setCategories(prev => [newCat, ...prev])
             setCategoryId(newCat.id)
             setShowCreateCategory(false)
           }}

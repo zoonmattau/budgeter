@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { Calendar, CheckCircle2, CreditCard } from 'lucide-react'
+import { Calendar, CheckCircle2, CreditCard, TrendingUp } from 'lucide-react'
 import { PlantVisual } from './plant-visual'
 import { LikelihoodBadge } from './likelihood-badge'
 import { formatCurrency, calculateLikelihood, getRequiredMonthlySavings } from '@/lib/utils'
@@ -22,6 +22,7 @@ export function GoalCard({ goal }: GoalCardProps) {
   const requiredMonthly = getRequiredMonthlySavings(goal)
   const isCompleted = goal.status === 'completed'
   const isDebtPayoff = goal.goal_type === 'debt_payoff'
+  const isNetWorthMilestone = goal.goal_type === 'net_worth_milestone'
   const remainingDebt = Math.max(0, targetAmount - currentAmount)
 
   return (
@@ -39,6 +40,16 @@ export function GoalCard({ goal }: GoalCardProps) {
                 <CreditCard className="w-8 h-8 text-red-500" />
               )}
             </div>
+          ) : isNetWorthMilestone ? (
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
+              isCompleted ? 'bg-sprout-100' : 'bg-blue-100'
+            }`}>
+              {isCompleted ? (
+                <CheckCircle2 className="w-8 h-8 text-sprout-600" />
+              ) : (
+                <TrendingUp className="w-8 h-8 text-blue-500" />
+              )}
+            </div>
           ) : (
             <PlantVisual progress={progress} size="md" />
           )}
@@ -51,6 +62,9 @@ export function GoalCard({ goal }: GoalCardProps) {
               <h3 className="font-display font-semibold text-gray-900 truncate">{goal.name}</h3>
               {isDebtPayoff && !isCompleted && (
                 <span className="text-xs text-red-500 font-medium">Debt Payoff</span>
+              )}
+              {isNetWorthMilestone && !isCompleted && (
+                <span className="text-xs text-blue-500 font-medium">Net Worth Milestone</span>
               )}
             </div>
             {isCompleted ? (
@@ -91,7 +105,9 @@ export function GoalCard({ goal }: GoalCardProps) {
               className={`h-full rounded-full transition-all duration-500 ${
                 isDebtPayoff
                   ? 'bg-gradient-to-r from-red-400 to-red-500'
-                  : 'bg-gradient-to-r from-sprout-400 to-sprout-500'
+                  : isNetWorthMilestone
+                    ? 'bg-gradient-to-r from-blue-400 to-blue-500'
+                    : 'bg-gradient-to-r from-sprout-400 to-sprout-500'
               }`}
               style={{ width: `${Math.min(progress, 100)}%` }}
             />

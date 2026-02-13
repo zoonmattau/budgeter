@@ -6,6 +6,7 @@ import { AccountsList } from '@/components/net-worth/accounts-list'
 import { NetWorthHistoryChart } from '@/components/net-worth/net-worth-history-chart'
 import { MomentumCard } from '@/components/net-worth/momentum-card'
 import { MilestoneProgress } from '@/components/net-worth/milestone-progress'
+import { format, startOfMonth } from 'date-fns'
 import {
   calculateMonthlyChange,
   calculateAvgMonthlyChange,
@@ -20,7 +21,9 @@ export default async function NetWorthPage() {
 
   if (!user) return null
 
-  const [{ data: accounts }, { data: snapshots }, { data: goals }] = await Promise.all([
+  const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+
+  const [{ data: accounts }, { data: snapshots }, { data: goals }, { data: incomeEntries }, { data: budgets }, { data: bills }] = await Promise.all([
     supabase
       .from('accounts')
       .select('*')
@@ -37,6 +40,26 @@ export default async function NetWorthPage() {
       .select('*')
       .eq('user_id', user.id)
       .eq('status', 'active'),
+    // Income for projection
+    supabase
+      .from('income_entries')
+      .select('amount')
+      .eq('user_id', user.id)
+      .eq('month', currentMonth),
+    // Budget allocations for projection
+    supabase
+      .from('budgets')
+      .select('allocated')
+      .eq('user_id', user.id)
+      .eq('month', currentMonth)
+      .is('household_id', null),
+    // Active bills for fixed costs
+    supabase
+      .from('bills')
+      .select('amount, frequency')
+      .eq('user_id', user.id)
+      .is('household_id', null)
+      .eq('is_active', true),
   ])
 
   // Create/update today's snapshot if there are accounts
@@ -68,15 +91,44 @@ export default async function NetWorthPage() {
     ? calculateMonthlyChange(snapshotData, netWorth)
     : { monthlyChange: 0, lastMonthChange: null }
 
-  const avgMonthlyChange = hasEnoughSnapshots
+  const historicalAvgChange = hasEnoughSnapshots
     ? calculateAvgMonthlyChange(snapshotData, netWorth)
     : 0
+
+  // Compute budget-based monthly surplus: income - spending - debt payments
+  const totalMonthlyIncome = (incomeEntries || []).reduce((sum, e) => sum + Number(e.amount), 0)
+  const totalBudgetAllocated = (budgets || []).reduce((sum, b) => sum + Number(b.allocated), 0)
+  const frequencyToMonthly: Record<string, number> = {
+    weekly: 4.33, fortnightly: 2.17, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12,
+  }
+  const debtAccountsList = (accounts || []).filter(a =>
+    (a.type === 'credit' || a.type === 'credit_card' || a.type === 'debt' || a.type === 'loan') && a.balance > 0
+  )
+  const monthlyDebtPayments = debtAccountsList.reduce((total, a) => {
+    if (!a.minimum_payment) return total
+    const multiplier = frequencyToMonthly[a.payment_frequency || 'monthly'] || 1
+    return total + (Number(a.minimum_payment) * multiplier)
+  }, 0)
+  const monthlySinkingFunds = (bills || [])
+    .filter(b => b.frequency === 'quarterly' || b.frequency === 'yearly')
+    .reduce((sum, b) => sum + Number(b.amount) / (b.frequency === 'yearly' ? 12 : 3), 0)
+
+  const budgetSurplus = totalMonthlyIncome > 0
+    ? totalMonthlyIncome - totalBudgetAllocated - monthlyDebtPayments - monthlySinkingFunds
+    : 0
+
+  // Use whichever is more informed: budget surplus (if income is set up) or historical average
+  // Add debt payments back since paying debt also increases net worth
+  const budgetBasedChange = budgetSurplus + monthlyDebtPayments
+  const avgMonthlyChange = totalMonthlyIncome > 0 && budgetBasedChange > 0
+    ? budgetBasedChange
+    : historicalAvgChange
 
   const activeGoals = (goals || []).map(g => ({
     id: g.id,
     name: g.name,
     target_amount: Number(g.target_amount),
-    goal_type: g.goal_type as 'savings' | 'debt_payoff',
+    goal_type: g.goal_type as 'savings' | 'debt_payoff' | 'net_worth_milestone',
   }))
 
   const milestone = getNextMilestone(netWorth, activeGoals)

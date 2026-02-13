@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Sparkles, Plane, Car, Home, Gift, GraduationCap, CreditCard, Wallet } from 'lucide-react'
+import { ArrowLeft, Sparkles, Plane, Car, Home, Gift, GraduationCap, CreditCard, Wallet, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
@@ -18,7 +18,7 @@ const goalTemplates = [
   { name: 'Education', icon: GraduationCap, color: '#8b5cf6', target: 3000 },
 ]
 
-type GoalType = 'savings' | 'debt_payoff'
+type GoalType = 'savings' | 'debt_payoff' | 'net_worth_milestone'
 
 export default function NewGoalPage() {
   const router = useRouter()
@@ -92,8 +92,8 @@ export default function NewGoalPage() {
       target_amount: parseFloat(targetAmount),
       current_amount: 0,
       deadline: deadline || null,
-      icon: goalType === 'debt_payoff' ? 'credit-card' : 'target',
-      color: goalType === 'debt_payoff' ? '#ef4444' : (selectedTemplate?.color || '#d946ef'),
+      icon: goalType === 'debt_payoff' ? 'credit-card' : goalType === 'net_worth_milestone' ? 'trending-up' : 'target',
+      color: goalType === 'debt_payoff' ? '#ef4444' : goalType === 'net_worth_milestone' ? '#3b82f6' : (selectedTemplate?.color || '#d946ef'),
       visual_type: 'plant',
       goal_type: goalType,
       linked_account_id: goalType === 'debt_payoff' ? selectedAccountId : null,
@@ -119,7 +119,7 @@ export default function NewGoalPage() {
       {/* Goal Type Selector */}
       <div>
         <p className="text-sm text-gray-500 mb-3">What type of goal?</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <button
             onClick={() => {
               setGoalType('savings')
@@ -137,7 +137,7 @@ export default function NewGoalPage() {
             <div className="w-10 h-10 rounded-xl bg-sprout-100 flex items-center justify-center mb-2">
               <Wallet className="w-5 h-5 text-sprout-600" />
             </div>
-            <p className="font-semibold text-gray-900">Save Money</p>
+            <p className="font-semibold text-gray-900 text-sm">Save Money</p>
             <p className="text-xs text-gray-500 mt-1">Save towards a goal</p>
           </button>
 
@@ -157,8 +157,29 @@ export default function NewGoalPage() {
             <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center mb-2">
               <CreditCard className="w-5 h-5 text-red-600" />
             </div>
-            <p className="font-semibold text-gray-900">Pay Off Debt</p>
+            <p className="font-semibold text-gray-900 text-sm">Pay Off Debt</p>
             <p className="text-xs text-gray-500 mt-1">Track debt repayment</p>
+          </button>
+
+          <button
+            onClick={() => {
+              setGoalType('net_worth_milestone')
+              setName('')
+              setTargetAmount('')
+              setSelectedAccountId('')
+              setSelectedTemplate(null)
+            }}
+            className={`p-4 rounded-xl border-2 transition-all text-left ${
+              goalType === 'net_worth_milestone'
+                ? 'border-bloom-500 bg-bloom-50'
+                : 'border-gray-100 hover:border-gray-200 bg-white'
+            }`}
+          >
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mb-2">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+            </div>
+            <p className="font-semibold text-gray-900 text-sm">Net Worth</p>
+            <p className="text-xs text-gray-500 mt-1">Hit a milestone</p>
           </button>
         </div>
       </div>
@@ -352,6 +373,94 @@ export default function NewGoalPage() {
             <button
               type="submit"
               disabled={loading || !name || !targetAmount || !selectedAccountId}
+              className="btn-primary w-full"
+            >
+              {loading ? 'Creating...' : 'Create Goal'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Net Worth Milestone Form */}
+      {goalType === 'net_worth_milestone' && (
+        <div className="border-t border-gray-100 pt-6">
+          {/* Milestone Presets */}
+          <div className="mb-6">
+            <p className="text-sm text-gray-500 mb-3">Pick a milestone or set your own</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Debt-free', amount: 0 },
+                { label: '$10k', amount: 10000 },
+                { label: '$25k', amount: 25000 },
+                { label: '$50k', amount: 50000 },
+                { label: '$100k', amount: 100000 },
+                { label: '$250k', amount: 250000 },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    setName(preset.amount === 0 ? 'Become Debt-Free' : `Reach ${preset.label} Net Worth`)
+                    setTargetAmount(preset.amount.toString())
+                  }}
+                  className={`p-3 rounded-xl border-2 transition-all text-center ${
+                    targetAmount === preset.amount.toString()
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-100 hover:border-gray-200 bg-white'
+                  }`}
+                >
+                  <p className="text-sm font-bold text-gray-900">{preset.label}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="label">Goal Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Reach $100k Net Worth"
+                className="input"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="label">Target Net Worth</label>
+              <CurrencyInput
+                value={targetAmount}
+                onChange={setTargetAmount}
+                placeholder="100,000"
+                required
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                The net worth amount you want to reach
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Target Date (optional)</label>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="input"
+              />
+            </div>
+
+            <div className="p-4 bg-blue-50 rounded-xl">
+              <p className="text-sm text-blue-700">
+                <strong>Auto-tracking:</strong> Your progress updates automatically as your net worth changes. This milestone will appear on your net worth chart.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !name || !targetAmount}
               className="btn-primary w-full"
             >
               {loading ? 'Creating...' : 'Create Goal'}

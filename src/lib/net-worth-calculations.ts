@@ -9,7 +9,7 @@ interface Goal {
   id: string
   name: string
   target_amount: number
-  goal_type: 'savings' | 'debt_payoff'
+  goal_type: 'savings' | 'debt_payoff' | 'net_worth_milestone'
 }
 
 interface Milestone {
@@ -129,7 +129,7 @@ export function getNextMilestone(
 
   // Find nearest savings goal target above current
   const goalTargets = activeGoals
-    .filter(g => g.goal_type === 'savings' && Number(g.target_amount) > currentNetWorth)
+    .filter(g => (g.goal_type === 'savings' || g.goal_type === 'net_worth_milestone') && Number(g.target_amount) > currentNetWorth)
     .sort((a, b) => Number(a.target_amount) - Number(b.target_amount))
 
   const nearestGoal = goalTargets[0]

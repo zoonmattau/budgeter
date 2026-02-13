@@ -239,7 +239,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         memberBreakdown={memberBreakdown}
       />
 
-      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={accounts || []} bankAccounts={(allAccounts || []).filter(a => a.type === 'bank' || a.type === 'cash')} />
+      <QuickAddButton expenseCategories={expenseCategories || []} incomeCategories={incomeCategories || []} creditCards={accounts || []} bankAccounts={(allAccounts || []).filter(a => a.type === 'bank' || a.type === 'cash')} debtAccounts={(allAccounts || []).filter(a => a.type === 'credit' || a.type === 'credit_card' || a.type === 'loan' || a.type === 'debt')} />
     </div>
   )
 }

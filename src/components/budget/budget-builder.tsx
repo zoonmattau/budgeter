@@ -193,6 +193,9 @@ export function BudgetBuilder({
   const [savingContribution, setSavingContribution] = useState(false)
   const [localCategories, setLocalCategories] = useState(budgetCategories)
   const [showCreateCategory, setShowCreateCategory] = useState(false)
+  const [reorderMode, setReorderMode] = useState(false)
+  const [savingOrder, setSavingOrder] = useState(false)
+  const [confirmingReset, setConfirmingReset] = useState(false)
 
   const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + a, 0)
   const householdContributionCost = !isHousehold && householdId ? userMonthlyContribution : 0
@@ -210,14 +213,34 @@ export function BudgetBuilder({
   const hasDebtAndSavings = totalDebtBalance > 0 && savingsAllocation > 0
 
   function handleReset() {
-    const hasAllocations = Object.values(allocations).some(a => a > 0)
-    if (hasAllocations) {
-      const confirmed = window.confirm(
-        'Are you sure you want to reset all budget allocations? This will clear all category amounts.'
-      )
-      if (!confirmed) return
-    }
     setAllocations({})
+    setConfirmingReset(false)
+  }
+
+  function handleMoveCategory(index: number, direction: 'up' | 'down') {
+    const newIndex = direction === 'up' ? index - 1 : index + 1
+    if (newIndex < 0 || newIndex >= localCategories.length) return
+    setLocalCategories(prev => {
+      const updated = [...prev]
+      const temp = updated[index]
+      updated[index] = updated[newIndex]
+      updated[newIndex] = temp
+      return updated
+    })
+  }
+
+  async function handleSaveOrder() {
+    setSavingOrder(true)
+    const updates = localCategories.map((cat, i) =>
+      supabase
+        .from('categories')
+        .update({ sort_order: i })
+        .eq('id', cat.id)
+    )
+    await Promise.all(updates)
+    setSavingOrder(false)
+    setReorderMode(false)
+    router.refresh()
   }
 
   function handleWizardComplete() {
@@ -407,13 +430,6 @@ export function BudgetBuilder({
             >
               <Wand2 className="w-3 h-3" />
               Step-by-Step Guide
-            </button>
-            <button
-              onClick={handleReset}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Reset
             </button>
           </div>
         )}
@@ -888,7 +904,35 @@ export function BudgetBuilder({
 
       {/* Category Allocations (discretionary spending) */}
       <div className="space-y-3">
-        {localCategories.map((category) => {
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-500">Categories</h3>
+          {reorderMode ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setReorderMode(false); setLocalCategories(budgetCategories) }}
+                className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveOrder}
+                disabled={savingOrder}
+                className="text-xs text-white bg-bloom-500 hover:bg-bloom-600 px-3 py-1 rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {savingOrder ? 'Saving...' : 'Done'}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setReorderMode(true)}
+              className="text-xs text-bloom-600 hover:text-bloom-700 font-medium"
+            >
+              Reorder
+            </button>
+          )}
+        </div>
+
+        {localCategories.map((category, index) => {
           const allocated = allocations[category.id] || 0
           const spent = spentByCategory[category.id] || 0
           const memberBreakdown = isHousehold ? getMemberBreakdown(category.id) : []
@@ -926,6 +970,39 @@ export function BudgetBuilder({
             } else {
               rentStatus = { text: `Due in ${daysUntil}d`, color: 'text-gray-500' }
             }
+          }
+
+          if (reorderMode) {
+            return (
+              <div key={category.id} className="card py-2 px-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => handleMoveCategory(index, 'up')}
+                      disabled={index === 0}
+                      className="p-1 rounded hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                    >
+                      <ChevronUp className="w-4 h-4 text-gray-600" />
+                    </button>
+                    <button
+                      onClick={() => handleMoveCategory(index, 'down')}
+                      disabled={index === localCategories.length - 1}
+                      className="p-1 rounded hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                    >
+                      <ChevronDown className="w-4 h-4 text-gray-600" />
+                    </button>
+                  </div>
+                  <CategoryChip
+                    name={category.name}
+                    color={category.color}
+                    icon={category.icon}
+                    size="md"
+                  />
+                  <p className="font-medium text-gray-900 flex-1">{category.name}</p>
+                  <span className="text-xs text-gray-400">#{index + 1}</span>
+                </div>
+              </div>
+            )
           }
 
           return (
@@ -1207,7 +1284,7 @@ export function BudgetBuilder({
           type="expense"
           onClose={() => setShowCreateCategory(false)}
           onCreated={(newCat) => {
-            setLocalCategories(prev => [...prev, newCat])
+            setLocalCategories(prev => [newCat, ...prev])
             setShowCreateCategory(false)
           }}
         />
@@ -1533,6 +1610,40 @@ export function BudgetBuilder({
       >
         {saving ? 'Saving...' : unallocated < 0 ? 'Save Anyway' : 'Save Budget'}
       </button>
+
+      {/* Reset Budget - tucked away to prevent accidental use */}
+      {Object.values(allocations).some(a => a > 0) && (
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          {!confirmingReset ? (
+            <button
+              onClick={() => setConfirmingReset(true)}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Reset all allocations
+            </button>
+          ) : (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-center space-y-2">
+              <p className="text-sm text-red-700 font-medium">Clear all category amounts?</p>
+              <p className="text-xs text-red-600">This will set every category back to $0. You&apos;ll need to re-enter all amounts.</p>
+              <div className="flex gap-2 justify-center">
+                <button
+                  onClick={() => setConfirmingReset(false)}
+                  className="px-4 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="px-4 py-1.5 text-xs font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  Yes, reset everything
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

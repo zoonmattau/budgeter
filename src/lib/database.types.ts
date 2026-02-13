@@ -431,7 +431,7 @@ export interface Database {
           deadline: string | null
           status: 'active' | 'completed' | 'cancelled'
           visual_type: 'plant' | 'jar' | 'blocks'
-          goal_type: 'savings' | 'debt_payoff'
+          goal_type: 'savings' | 'debt_payoff' | 'net_worth_milestone'
           linked_account_id: string | null
           created_at: string
           updated_at: string
