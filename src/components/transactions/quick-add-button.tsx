@@ -192,7 +192,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
         user_id: user.id,
         category_id: expenseCategories[0]?.id,
         amount: paymentAmount,
-        type: 'expense',
+        type: 'transfer',
         description: paymentDescription,
         date: date,
         account_id: selectedFromAccountId,

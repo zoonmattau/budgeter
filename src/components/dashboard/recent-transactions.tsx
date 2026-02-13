@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { format, isToday, isYesterday } from 'date-fns'
-import { Pencil } from 'lucide-react'
+import { ArrowLeftRight, Pencil } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
 import { MemberBadge, getMemberIndex } from '@/components/ui/member-badge'
@@ -53,6 +53,7 @@ export function RecentTransactions({
         else if (isYesterday(date)) dateText = 'Yesterday'
 
         const isIncome = transaction.type === 'income'
+        const isTransfer = transaction.type === 'transfer'
         const isOwnTransaction = transaction.user_id === currentUserId
         const memberIndex = getMemberIndex(transaction.user_id, members)
         const displayName = isOwnTransaction ? 'You' : transaction.profiles?.display_name || null
@@ -70,7 +71,11 @@ export function RecentTransactions({
                   size="sm"
                 />
               )}
-              {transaction.categories && (
+              {isTransfer ? (
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-gray-100">
+                  <ArrowLeftRight className="w-4 h-4 text-gray-400" />
+                </div>
+              ) : transaction.categories && (
                 <CategoryChip
                   name={transaction.categories.name}
                   color={transaction.categories.color}
@@ -86,8 +91,8 @@ export function RecentTransactions({
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-              <p className={`font-semibold ${isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
-                {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+              <p className={`font-semibold ${isTransfer ? 'text-gray-400' : isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
+                {isTransfer ? '' : isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
               </p>
               <button
                 onClick={() => setSelectedTransaction(transaction)}

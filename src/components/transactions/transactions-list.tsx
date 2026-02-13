@@ -9,7 +9,7 @@ import { MemberBreakdown, MemberSpending } from '@/components/ui/member-breakdow
 import { TransactionEditModal } from './transaction-edit-modal'
 import type { Tables } from '@/lib/database.types'
 import type { HouseholdMember } from '@/lib/scope-context'
-import { ChevronDown, Pencil } from 'lucide-react'
+import { ArrowLeftRight, ChevronDown, Pencil } from 'lucide-react'
 
 type TransactionWithCategory = Tables<'transactions'> & {
   categories: Tables<'categories'> | null
@@ -126,6 +126,7 @@ export function TransactionsList({
             <div className="card divide-y divide-gray-50">
               {dayTransactions.map((transaction) => {
                 const isIncome = transaction.type === 'income'
+                const isTransfer = transaction.type === 'transfer'
                 const isOwnTransaction = transaction.user_id === currentUserId
                 const memberIndex = getMemberIndex(transaction.user_id, members)
                 const displayName = isOwnTransaction ? 'You' : transaction.profiles?.display_name || null
@@ -144,7 +145,11 @@ export function TransactionsList({
                           size="sm"
                         />
                       )}
-                      {transaction.categories && (
+                      {isTransfer ? (
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gray-100">
+                          <ArrowLeftRight className="w-5 h-5 text-gray-400" />
+                        </div>
+                      ) : transaction.categories && (
                         <CategoryChip
                           name={transaction.categories.name}
                           color={transaction.categories.color}
@@ -157,13 +162,13 @@ export function TransactionsList({
                           {transaction.description}
                         </p>
                         <p className="text-xs text-gray-400">
-                          {transaction.categories?.name}
+                          {isTransfer ? 'Payment' : transaction.categories?.name}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                      <p className={`font-semibold ${isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
-                        {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+                      <p className={`font-semibold ${isTransfer ? 'text-gray-400' : isIncome ? 'text-sprout-600' : 'text-gray-900'}`}>
+                        {isTransfer ? '' : isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
                       </p>
                       <Pencil className="w-4 h-4 text-gray-300 group-hover:text-gray-500" />
                     </div>
