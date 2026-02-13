@@ -196,6 +196,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
         description: paymentDescription,
         date: date,
         account_id: selectedFromAccountId,
+        to_account_id: selectedToAccountId,
         is_recurring: false,
       })
 

@@ -328,6 +328,7 @@ export interface Database {
           user_id: string
           household_id: string | null
           account_id: string | null
+          to_account_id: string | null
           category_id: string
           amount: number
           type: 'expense' | 'income' | 'transfer'
@@ -343,6 +344,7 @@ export interface Database {
           user_id: string
           household_id?: string | null
           account_id?: string | null
+          to_account_id?: string | null
           category_id: string
           amount: number
           type?: 'expense' | 'income' | 'transfer'
@@ -358,6 +360,7 @@ export interface Database {
           user_id?: string
           household_id?: string | null
           account_id?: string | null
+          to_account_id?: string | null
           category_id?: string
           amount?: number
           type?: 'expense' | 'income' | 'transfer'

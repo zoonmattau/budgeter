@@ -198,8 +198,36 @@ export function TransactionEditModal({
   async function handleDelete() {
     setDeleting(true)
 
-    // Revert account balance on delete
-    if (transaction.account_id) {
+    const isTransfer = transaction.type === 'transfer'
+
+    if (isTransfer) {
+      // Transfer/payment: revert both source (bank) and destination (credit card) accounts
+      if (transaction.account_id) {
+        const fromAccount = bankAccounts.find(a => a.id === transaction.account_id)
+        if (fromAccount) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: fromAccount.balance + transaction.amount,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', transaction.account_id)
+        }
+      }
+      if (transaction.to_account_id) {
+        const toAccount = [...creditCards, ...bankAccounts].find(a => a.id === transaction.to_account_id)
+        if (toAccount) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: toAccount.balance + transaction.amount,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', transaction.to_account_id)
+        }
+      }
+    } else if (transaction.account_id) {
+      // Regular expense/income: revert single account
       const card = creditCards.find(c => c.id === transaction.account_id)
       const bank = bankAccounts.find(a => a.id === transaction.account_id)
       if (card) {
@@ -307,7 +335,7 @@ export function TransactionEditModal({
               Delete Transaction?
             </h3>
             <p className="text-gray-500 text-sm mb-4">
-              This will permanently delete this {isIncome ? 'income' : 'expense'} record. This action cannot be undone.
+              This will permanently delete this {transaction.type === 'transfer' ? 'payment' : isIncome ? 'income' : 'expense'} record{transaction.type === 'transfer' ? ' and revert both account balances' : ''}. This action cannot be undone.
             </p>
             {(isRecurring || linkedBill) && (
               <div className="p-3 bg-amber-50 rounded-xl mb-4">
