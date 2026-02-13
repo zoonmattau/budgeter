@@ -48,6 +48,35 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     return calculateMilestoneInfo(currentNetWorth, target, avgMonthlyGrowth, deadline || null)
   }, [currentNetWorth, targetAmount, avgMonthlyGrowth, deadline])
 
+  // Compute dates that correspond to 25%, 50%, 75%, 99% chance
+  // Formula: pct = round((avgMonthlyGrowth / (remaining / months)) * 85)
+  // Solve: months = (pct / 85) * remaining / avgMonthlyGrowth
+  const quickDates = useMemo(() => {
+    if (targetAmount === '' || targetAmount === undefined) return null
+    const target = parseFloat(targetAmount)
+    if (isNaN(target) || target < 0) return null
+    const remaining = target - currentNetWorth
+    if (remaining <= 0 || avgMonthlyGrowth <= 0) return null
+
+    const percentages = [25, 50, 75, 99] as const
+    const now = new Date()
+    const results: { pct: number; date: Date; dateStr: string }[] = []
+
+    for (const pct of percentages) {
+      const months = Math.ceil((pct / 85) * remaining / avgMonthlyGrowth)
+      if (months > 0 && months <= 600) {
+        const d = new Date(now.getFullYear(), now.getMonth() + months, 1)
+        results.push({
+          pct,
+          date: d,
+          dateStr: d.toISOString().split('T')[0],
+        })
+      }
+    }
+
+    return results.length > 0 ? results : null
+  }, [targetAmount, currentNetWorth, avgMonthlyGrowth])
+
   function handleTemplateSelect(template: typeof goalTemplates[0]) {
     setSelectedTemplate(template)
     setName(template.name)
@@ -441,6 +470,39 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                   </p>
                   <p className="text-xs text-blue-500 mt-0.5">Tap to set as your target date</p>
                 </button>
+              </div>
+            )}
+
+            {/* Quick date buttons for target percentages */}
+            {quickDates && (
+              <div>
+                <p className="text-sm text-gray-500 mb-2">Quick pick a target date</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {quickDates.map(({ pct, date, dateStr }) => {
+                    const isSelected = deadline === dateStr
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setDeadline(dateStr)}
+                        className={`p-2.5 rounded-xl border-2 transition-all text-center ${
+                          isSelected
+                            ? pct >= 75 ? 'border-sprout-500 bg-sprout-50' :
+                              pct >= 50 ? 'border-amber-500 bg-amber-50' : 'border-red-500 bg-red-50'
+                            : 'border-gray-100 hover:border-gray-200 bg-white'
+                        }`}
+                      >
+                        <p className={`text-lg font-bold ${
+                          pct >= 75 ? 'text-sprout-600' :
+                          pct >= 50 ? 'text-amber-600' : 'text-red-600'
+                        }`}>{pct}%</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">
+                          {format(date, 'MMM yyyy')}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             )}
 

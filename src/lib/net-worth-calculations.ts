@@ -105,10 +105,23 @@ export function calculateAvgMonthlyChange(
     changes.push({ value: Number(snap2.net_worth) - Number(snap3.net_worth), weight: 1 })
   }
 
-  if (changes.length === 0) return 0
+  if (changes.length > 0) {
+    const totalWeight = changes.reduce((sum, c) => sum + c.weight, 0)
+    return changes.reduce((sum, c) => sum + c.value * c.weight, 0) / totalWeight
+  }
 
-  const totalWeight = changes.reduce((sum, c) => sum + c.weight, 0)
-  return changes.reduce((sum, c) => sum + c.value * c.weight, 0) / totalWeight
+  // Fallback: use oldest snapshot to compute average change per month
+  if (snapshots.length >= 1) {
+    const oldest = snapshots[0]
+    const oldestDate = new Date(oldest.snapshot_date)
+    const diffMs = now.getTime() - oldestDate.getTime()
+    const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30.44)
+    if (diffMonths >= 0.5) {
+      return (currentNetWorth - Number(oldest.net_worth)) / diffMonths
+    }
+  }
+
+  return 0
 }
 
 /**
