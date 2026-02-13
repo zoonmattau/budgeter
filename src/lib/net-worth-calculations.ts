@@ -180,12 +180,15 @@ export function projectArrivalDate(
 export interface MilestoneInfo {
   avgMonthlyGrowth: number
   estimatedArrival: string | null // ISO date string
+  suggestedDate: string | null // ISO date string — best target date at current pace
   likelihood: 'on_track' | 'at_risk' | 'behind'
+  percentageChance: number | null // 0-99 when deadline set, null otherwise
   requiredMonthlyGrowth: number | null
 }
 
 /**
- * Compute likelihood, estimated arrival, and required growth for a net_worth_milestone goal.
+ * Compute likelihood, percentage chance, estimated arrival, and required growth
+ * for a net_worth_milestone goal.
  */
 export function calculateMilestoneInfo(
   currentNetWorth: number,
@@ -196,11 +199,25 @@ export function calculateMilestoneInfo(
   const remaining = targetAmount - currentNetWorth
   const arrival = projectArrivalDate(currentNetWorth, targetAmount, avgMonthlyGrowth)
 
+  // Suggested date: arrival + 20% buffer for a comfortable target
+  let suggestedDate: string | null = null
+  if (avgMonthlyGrowth > 0 && remaining > 0) {
+    const monthsNeeded = remaining / avgMonthlyGrowth
+    if (monthsNeeded <= 120) {
+      const bufferedMonths = Math.ceil(monthsNeeded * 1.2) // 20% buffer
+      const suggested = new Date()
+      suggested.setMonth(suggested.getMonth() + bufferedMonths)
+      suggestedDate = suggested.toISOString()
+    }
+  }
+
   let requiredMonthlyGrowth: number | null = null
   let likelihood: 'on_track' | 'at_risk' | 'behind'
+  let percentageChance: number | null = null
 
   if (remaining <= 0) {
     likelihood = 'on_track'
+    percentageChance = 99
   } else if (deadline) {
     const deadlineDate = new Date(deadline)
     const now = new Date()
@@ -209,13 +226,18 @@ export function calculateMilestoneInfo(
     if (monthsRemaining <= 0) {
       likelihood = 'behind'
       requiredMonthlyGrowth = remaining
+      percentageChance = 0
     } else {
       requiredMonthlyGrowth = remaining / monthsRemaining
 
       if (avgMonthlyGrowth <= 0) {
         likelihood = 'behind'
+        percentageChance = 0
       } else {
         const ratio = avgMonthlyGrowth / requiredMonthlyGrowth
+        // Map ratio to percentage: ratio 1.0 = 85%, ratio 1.2+ = 99%, scales linearly below
+        percentageChance = Math.min(99, Math.max(0, Math.round(ratio * 85)))
+
         if (ratio >= 0.9) likelihood = 'on_track'
         else if (ratio >= 0.6) likelihood = 'at_risk'
         else likelihood = 'behind'
@@ -228,7 +250,6 @@ export function calculateMilestoneInfo(
     } else if (arrival) {
       likelihood = 'on_track'
     } else {
-      // arrival is null = would take >5 years
       likelihood = 'at_risk'
     }
   }
@@ -236,7 +257,9 @@ export function calculateMilestoneInfo(
   return {
     avgMonthlyGrowth,
     estimatedArrival: arrival ? arrival.toISOString() : null,
+    suggestedDate,
     likelihood,
+    percentageChance,
     requiredMonthlyGrowth,
   }
 }

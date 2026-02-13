@@ -74,6 +74,13 @@ export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
                 <CheckCircle2 className="w-3 h-3" />
                 {isDebtPayoff ? 'Paid Off' : 'Done'}
               </span>
+            ) : isNetWorthMilestone && milestoneInfo && milestoneInfo.percentageChance !== null ? (
+              <span className={`text-sm font-bold ${
+                milestoneInfo.percentageChance >= 75 ? 'text-sprout-600' :
+                milestoneInfo.percentageChance >= 40 ? 'text-amber-600' : 'text-red-600'
+              }`}>
+                {milestoneInfo.percentageChance}% chance
+              </span>
             ) : (
               <LikelihoodBadge likelihood={likelihood} />
             )}

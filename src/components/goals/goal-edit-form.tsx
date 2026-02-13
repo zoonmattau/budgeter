@@ -246,13 +246,24 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
         {/* Milestone projection info */}
         {isNetWorthMilestone && !isCompleted && milestoneInfo && (
           <div className="mt-4 pt-4 border-t border-white/30 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-blue-700 text-sm">
-                <TrendingUp className="w-4 h-4" />
-                <span className="font-medium">Milestone Projection</span>
+            {/* Big percentage chance when deadline is set */}
+            {milestoneInfo.percentageChance !== null && goal.deadline && (
+              <div className={`rounded-xl p-4 text-center ${
+                milestoneInfo.percentageChance >= 75 ? 'bg-sprout-100/60' :
+                milestoneInfo.percentageChance >= 40 ? 'bg-amber-100/60' : 'bg-red-100/60'
+              }`}>
+                <p className={`text-4xl font-bold ${
+                  milestoneInfo.percentageChance >= 75 ? 'text-sprout-600' :
+                  milestoneInfo.percentageChance >= 40 ? 'text-amber-600' : 'text-red-600'
+                }`}>
+                  {milestoneInfo.percentageChance}%
+                </p>
+                <p className="text-sm text-gray-600 mt-0.5">
+                  chance of hitting by {format(new Date(goal.deadline), 'MMM yyyy')}
+                </p>
               </div>
-              <LikelihoodBadge likelihood={milestoneInfo.likelihood} />
-            </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/40 rounded-xl p-3">
                 <p className="text-xs text-gray-500">Monthly Growth</p>
@@ -271,7 +282,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
             </div>
             {milestoneInfo.requiredMonthlyGrowth !== null && milestoneInfo.requiredMonthlyGrowth > 0 && (
               <p className="text-xs text-blue-600">
-                Need +{formatCurrency(milestoneInfo.requiredMonthlyGrowth)}/mo growth to hit deadline
+                Need +{formatCurrency(milestoneInfo.requiredMonthlyGrowth)}/mo &middot; Currently +{formatCurrency(milestoneInfo.avgMonthlyGrowth)}/mo
               </p>
             )}
             <p className="text-xs text-gray-400">

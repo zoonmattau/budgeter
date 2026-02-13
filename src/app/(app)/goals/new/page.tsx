@@ -493,8 +493,30 @@ export default function NewGoalPage() {
               </p>
             </div>
 
+            {/* Suggested date + target date */}
+            {!loadingNetWorth && milestonePreview?.suggestedDate && !deadline && parseFloat(targetAmount) > 0 && (
+              <div className="p-4 bg-blue-50 rounded-xl">
+                <p className="text-sm text-blue-700 mb-2">
+                  Based on your +{formatCurrency(avgMonthlyGrowth)}/mo growth, we suggest targeting:
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(milestonePreview.suggestedDate!)
+                    setDeadline(d.toISOString().split('T')[0])
+                  }}
+                  className="w-full p-3 bg-white rounded-xl border-2 border-blue-300 hover:border-blue-500 transition-colors text-center"
+                >
+                  <p className="text-lg font-bold text-blue-700">
+                    {format(new Date(milestonePreview.suggestedDate), 'MMMM yyyy')}
+                  </p>
+                  <p className="text-xs text-blue-500 mt-0.5">Tap to set as your target date</p>
+                </button>
+              </div>
+            )}
+
             <div>
-              <label className="label">Target Date (optional)</label>
+              <label className="label">Target Date {!deadline && '(optional)'}</label>
               <input
                 type="date"
                 value={deadline}
@@ -502,6 +524,11 @@ export default function NewGoalPage() {
                 min={new Date().toISOString().split('T')[0]}
                 className="input"
               />
+              {!deadline && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Set a date to see your percentage chance of hitting it
+                </p>
+              )}
             </div>
 
             {/* Live Milestone Estimate */}
@@ -511,52 +538,67 @@ export default function NewGoalPage() {
               </div>
             )}
 
-            {!loadingNetWorth && currentNetWorth !== null && (
-              <div className="p-4 bg-blue-50 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-blue-800">Your current net worth</p>
-                  <p className={`text-sm font-bold ${currentNetWorth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
-                    {formatCurrency(currentNetWorth)}
-                  </p>
-                </div>
+            {!loadingNetWorth && currentNetWorth !== null && milestonePreview && parseFloat(targetAmount) > 0 && (
+              <div className="rounded-xl overflow-hidden">
+                {/* Percentage chance — big and prominent when deadline is set */}
+                {deadline && milestonePreview.percentageChance !== null && (
+                  <div className={`p-5 text-center ${
+                    milestonePreview.percentageChance >= 75 ? 'bg-sprout-50' :
+                    milestonePreview.percentageChance >= 40 ? 'bg-amber-50' : 'bg-red-50'
+                  }`}>
+                    <p className={`text-5xl font-bold ${
+                      milestonePreview.percentageChance >= 75 ? 'text-sprout-600' :
+                      milestonePreview.percentageChance >= 40 ? 'text-amber-600' : 'text-red-600'
+                    }`}>
+                      {milestonePreview.percentageChance}%
+                    </p>
+                    <p className={`text-sm font-medium mt-1 ${
+                      milestonePreview.percentageChance >= 75 ? 'text-sprout-700' :
+                      milestonePreview.percentageChance >= 40 ? 'text-amber-700' : 'text-red-700'
+                    }`}>
+                      chance of hitting this by {format(new Date(deadline), 'MMM yyyy')}
+                    </p>
+                    {milestonePreview.requiredMonthlyGrowth !== null && milestonePreview.requiredMonthlyGrowth > 0 && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Needs +{formatCurrency(milestonePreview.requiredMonthlyGrowth)}/mo &middot; You&apos;re averaging +{formatCurrency(avgMonthlyGrowth)}/mo
+                      </p>
+                    )}
+                  </div>
+                )}
 
-                {milestonePreview && parseFloat(targetAmount) > 0 && (
-                  <>
-                    <div className="border-t border-blue-100 pt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-medium text-blue-700">Projection</p>
-                        <LikelihoodBadge likelihood={milestonePreview.likelihood} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white/60 rounded-lg p-2.5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Monthly Growth</p>
-                          <p className={`text-sm font-bold ${avgMonthlyGrowth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
-                            {avgMonthlyGrowth >= 0 ? '+' : ''}{formatCurrency(avgMonthlyGrowth)}/mo
-                          </p>
-                        </div>
-                        <div className="bg-white/60 rounded-lg p-2.5">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Est. Arrival</p>
-                          <p className="text-sm font-bold text-blue-700">
-                            {milestonePreview.estimatedArrival
-                              ? format(new Date(milestonePreview.estimatedArrival), 'MMM yyyy')
-                              : avgMonthlyGrowth <= 0 ? 'N/A' : '5+ years'}
-                          </p>
-                        </div>
-                      </div>
-                      {milestonePreview.requiredMonthlyGrowth !== null && milestonePreview.requiredMonthlyGrowth > 0 && deadline && (
-                        <p className="text-xs text-blue-600 mt-2">
-                          Need +{formatCurrency(milestonePreview.requiredMonthlyGrowth)}/mo growth to hit your deadline
-                        </p>
-                      )}
+                {/* Stats row */}
+                <div className="bg-blue-50 p-4">
+                  <div className="flex items-center justify-between text-sm mb-3">
+                    <span className="text-blue-700">Current net worth</span>
+                    <span className={`font-bold ${currentNetWorth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                      {formatCurrency(currentNetWorth)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white/60 rounded-lg p-2.5">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider">Your Growth</p>
+                      <p className={`text-sm font-bold ${avgMonthlyGrowth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                        {avgMonthlyGrowth >= 0 ? '+' : ''}{formatCurrency(avgMonthlyGrowth)}/mo
+                      </p>
                     </div>
-                  </>
-                )}
+                    <div className="bg-white/60 rounded-lg p-2.5">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider">Est. Arrival</p>
+                      <p className="text-sm font-bold text-blue-700">
+                        {milestonePreview.estimatedArrival
+                          ? format(new Date(milestonePreview.estimatedArrival), 'MMM yyyy')
+                          : avgMonthlyGrowth <= 0 ? 'N/A' : '5+ years'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                {avgMonthlyGrowth === 0 && (
-                  <p className="text-xs text-blue-500">
-                    Keep tracking your net worth to get growth projections.
-                  </p>
-                )}
+            {!loadingNetWorth && currentNetWorth !== null && avgMonthlyGrowth === 0 && parseFloat(targetAmount) > 0 && (
+              <div className="p-4 bg-blue-50 rounded-xl">
+                <p className="text-sm text-blue-600">
+                  Keep tracking your net worth monthly to see growth projections and percentage chances.
+                </p>
               </div>
             )}
 
