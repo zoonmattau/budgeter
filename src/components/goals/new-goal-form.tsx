@@ -65,9 +65,9 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     for (const pct of percentages) {
       const months = Math.ceil((pct / 85) * remaining / avgMonthlyGrowth)
       if (months > 0 && months <= 600) {
-        const d = new Date(now.getFullYear(), now.getMonth() + months + 1, 0)
-        // Format using local time to avoid UTC timezone shift
-        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        // Use 15th of the target month to avoid timezone/end-of-month off-by-one issues
+        const d = new Date(now.getFullYear(), now.getMonth() + months, 15)
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-15`
         results.push({
           pct,
           date: d,
