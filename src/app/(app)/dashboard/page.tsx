@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { BudgetOverview } from '@/components/dashboard/budget-overview'
 import { BillsSummary } from '@/components/dashboard/bills-summary'
-import { DebtRepayments } from '@/components/dashboard/debt-repayments'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 import { QuickAddButton } from '@/components/transactions/quick-add-button'
 import { InsightsTeaser } from '@/components/dashboard/quick-links'
@@ -655,13 +654,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           a.due_date &&
           a.minimum_payment
         ) || []}
-      />
-
-      {/* Debt Repayments */}
-      <DebtRepayments
-        accounts={accounts || []}
-        availableFunds={Math.max(0, totalIncome - totalAllocated)}
-        extraDebtPayment={extraDebtPayment}
       />
 
       {/* Recent Transactions */}

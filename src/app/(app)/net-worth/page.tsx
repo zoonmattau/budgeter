@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { Plus, TrendingUp, TrendingDown, Users, CreditCard, Landmark, Wallet, PiggyBank, ChevronRight, Calculator } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, CreditCard, Landmark, Wallet, PiggyBank, ChevronRight, Calculator } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency } from '@/lib/utils'
 import { AccountsList } from '@/components/net-worth/accounts-list'
 import { NetWorthHistoryChart } from '@/components/net-worth/net-worth-history-chart'
 import { MomentumCard } from '@/components/net-worth/momentum-card'
 import { MilestoneProgress } from '@/components/net-worth/milestone-progress'
+import { LeaderboardPreview } from '@/components/leaderboard/leaderboard-preview'
 import { format, startOfMonth } from 'date-fns'
 import {
   calculateMonthlyChange,
@@ -23,7 +24,7 @@ export default async function NetWorthPage() {
 
   const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd')
 
-  const [{ data: accounts }, { data: snapshots }, { data: goals }, { data: incomeEntries }, { data: budgets }, { data: bills }] = await Promise.all([
+  const [{ data: accounts }, { data: snapshots }, { data: goals }, { data: incomeEntries }, { data: budgets }, { data: bills }, { data: friendsLeaderboard }, { data: globalLeaderboard }] = await Promise.all([
     supabase
       .from('accounts')
       .select('*')
@@ -60,6 +61,9 @@ export default async function NetWorthPage() {
       .eq('user_id', user.id)
       .is('household_id', null)
       .eq('is_active', true),
+    // Leaderboard data
+    supabase.rpc('get_friends_leaderboard', { p_user_id: user.id }),
+    supabase.rpc('get_global_leaderboard', { p_limit: 100 }),
   ])
 
   // Create/update today's snapshot if there are accounts
@@ -149,6 +153,72 @@ export default async function NetWorthPage() {
     goal_type: g.goal_type,
   }))
 
+  // Leaderboard ranking computation
+  // Simulated entries for global leaderboard (same logic as leaderboard page)
+  const today = new Date()
+  const lbSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate()
+  let lbState = lbSeed
+  function lbRand() {
+    lbState = (lbState * 1664525 + 1013904223) & 0x7fffffff
+    return lbState / 0x7fffffff
+  }
+  const simulatedNWs: number[] = []
+  for (let i = 0; i < 100; i++) {
+    const r = lbRand()
+    let nw: number
+    if (r < 0.20) nw = -Math.round(lbRand() * 30000 + 500)
+    else if (r < 0.50) nw = Math.round(lbRand() * 20000)
+    else if (r < 0.80) nw = Math.round(lbRand() * 80000 + 20000)
+    else if (r < 0.95) nw = Math.round(lbRand() * 400000 + 100000)
+    else nw = Math.round(lbRand() * 500000 + 500000)
+    simulatedNWs.push(nw)
+  }
+
+  const globalEntriesRaw = globalLeaderboard || []
+  const friendsEntriesRaw = friendsLeaderboard || []
+  const userGlobalEntry = globalEntriesRaw.find((e: { user_id: string }) => e.user_id === user.id)
+  const userFriendsEntry = friendsEntriesRaw.find((e: { user_id: string }) => e.user_id === user.id)
+  const userLBNetWorth = Number(userGlobalEntry?.net_worth ?? userFriendsEntry?.net_worth ?? netWorth)
+
+  const realGlobalNWs = globalEntriesRaw
+    .filter((e: { user_id: string }) => e.user_id !== user.id)
+    .map((e: { net_worth: number }) => Number(e.net_worth))
+  const allGlobalNWs = [...simulatedNWs, ...realGlobalNWs]
+  const globalRank = allGlobalNWs.filter(nw => nw > userLBNetWorth).length + 1
+  const globalTotal = allGlobalNWs.length + 1
+
+  const realFriendsNWs: number[] = friendsEntriesRaw
+    .filter((e: { user_id: string }) => e.user_id !== user.id)
+    .map((e: { net_worth: number }) => Number(e.net_worth))
+  const friendsRank = realFriendsNWs.filter((nw: number) => nw > userLBNetWorth).length + 1
+  const friendsTotal = realFriendsNWs.length + 1
+
+  // Build display entries - global (anonymous)
+  const sortedGlobalNWs = allGlobalNWs.sort((a, b) => b - a)
+  const globalDisplayRaw = sortedGlobalNWs.map((nw, i) => ({
+    rank: i + 1, isUser: false, displayName: null as string | null, netWorth: nw,
+  }))
+  globalDisplayRaw.splice(globalRank - 1, 0, { rank: globalRank, isUser: true, displayName: null, netWorth: userLBNetWorth })
+  const globalDisplay = globalDisplayRaw.map((e, i) => ({ ...e, rank: i + 1 }))
+
+  // Friends (named)
+  const sortedFriendsRaw = friendsEntriesRaw
+    .sort((a: { net_worth: number }, b: { net_worth: number }) => Number(b.net_worth) - Number(a.net_worth))
+    .map((e: { user_id: string; display_name: string; net_worth: number }, i: number) => ({
+      rank: i + 1,
+      isUser: e.user_id === user.id,
+      displayName: e.user_id === user.id ? 'You' : (e.display_name || 'Friend'),
+      netWorth: Number(e.net_worth),
+    }))
+  const userInFriends = sortedFriendsRaw.some((e: { isUser: boolean }) => e.isUser)
+  const friendsDisplay = userInFriends
+    ? sortedFriendsRaw
+    : (() => {
+        const list = [...sortedFriendsRaw]
+        list.splice(friendsRank - 1, 0, { rank: friendsRank, isUser: true, displayName: 'You', netWorth: userLBNetWorth })
+        return list.map((e: { rank: number; isUser: boolean; displayName: string | null; netWorth: number | null }, i: number) => ({ ...e, rank: i + 1 }))
+      })()
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -224,22 +294,15 @@ export default async function NetWorthPage() {
         </Link>
       )}
 
-      {/* Leaderboard Link */}
-      <Link
-        href="/leaderboard"
-        className="card flex items-center justify-between hover:bg-gray-50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-bloom-100 flex items-center justify-center">
-            <Users className="w-5 h-5 text-bloom-600" />
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Compare with Friends</p>
-            <p className="text-xs text-gray-500">View leaderboards & add friends</p>
-          </div>
-        </div>
-        <ChevronRight className="w-5 h-5 text-gray-400" />
-      </Link>
+      {/* Leaderboard Preview */}
+      <LeaderboardPreview
+        globalRank={globalRank}
+        globalTotal={globalTotal}
+        globalEntries={globalDisplay}
+        friendsRank={friendsRank}
+        friendsTotal={friendsTotal}
+        friendsEntries={friendsDisplay}
+      />
 
       {/* Assets & Liabilities Summary (moved from hero) */}
       {(accounts?.length ?? 0) > 0 && (
