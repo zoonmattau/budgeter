@@ -65,7 +65,8 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     for (const pct of percentages) {
       const months = Math.ceil((pct / 85) * remaining / avgMonthlyGrowth)
       if (months > 0 && months <= 600) {
-        const d = new Date(now.getFullYear(), now.getMonth() + months, 1)
+        // Use last day of the target month so the full month counts in the calculation
+        const d = new Date(now.getFullYear(), now.getMonth() + months + 1, 0)
         results.push({
           pct,
           date: d,
@@ -451,6 +452,20 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
               </p>
             </div>
 
+            {/* No budget prompt */}
+            {avgMonthlyGrowth === 0 && (
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                <p className="text-sm font-medium text-amber-800 mb-1">No budget data found</p>
+                <p className="text-xs text-amber-700 mb-3">
+                  Set up your budget so we can project when you&apos;ll hit this milestone and show your chances of success.
+                </p>
+                <Link href="/budget" className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-800 hover:text-amber-900 transition-colors">
+                  Go to Budget
+                  <ArrowLeft className="w-3.5 h-3.5 rotate-180" />
+                </Link>
+              </div>
+            )}
+
             {/* Suggested date */}
             {milestonePreview?.suggestedDate && !deadline && (
               <div className="p-4 bg-blue-50 rounded-xl">
@@ -551,7 +566,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                     )}
                     {avgMonthlyGrowth === 0 && (
                       <p className="text-xs text-gray-500 mt-2">
-                        Track your net worth for a few months to improve this estimate
+                        Set up your budget to improve this estimate
                       </p>
                     )}
                   </>
@@ -589,9 +604,9 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                   </div>
                 </div>
               )}
-              {avgMonthlyGrowth === 0 && !deadline && (
+              {avgMonthlyGrowth === 0 && (
                 <p className="text-xs text-blue-600 mt-1">
-                  Keep tracking your net worth monthly to see growth projections.
+                  Set up your budget to see growth projections and target dates.
                 </p>
               )}
             </div>
