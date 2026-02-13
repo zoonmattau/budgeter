@@ -239,6 +239,20 @@ export default async function NetWorthPage() {
         <p className={`text-5xl font-bold mt-1 ${netWorth >= 0 ? 'text-sprout-600' : 'text-red-600'}`}>
           {formatCurrency(netWorth)}
         </p>
+        {(accounts?.length ?? 0) > 0 && (
+          <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-gray-200/50">
+            <div className="flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-sprout-600" />
+              <span className="text-xs text-gray-500">Assets</span>
+              <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalAssets)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="w-3.5 h-3.5 text-red-500" />
+              <span className="text-xs text-gray-500">Liabilities</span>
+              <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalLiabilities)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Momentum Card */}
@@ -303,26 +317,6 @@ export default async function NetWorthPage() {
         friendsTotal={friendsTotal}
         friendsEntries={friendsDisplay}
       />
-
-      {/* Assets & Liabilities Summary (moved from hero) */}
-      {(accounts?.length ?? 0) > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="card">
-            <div className="flex items-center gap-1.5 text-sprout-600 mb-1">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-xs font-medium">Assets</span>
-            </div>
-            <p className="text-lg font-bold text-gray-900">{formatCurrency(totalAssets)}</p>
-          </div>
-          <div className="card">
-            <div className="flex items-center gap-1.5 text-red-500 mb-1">
-              <TrendingDown className="w-4 h-4" />
-              <span className="text-xs font-medium">Liabilities</span>
-            </div>
-            <p className="text-lg font-bold text-gray-900">{formatCurrency(totalLiabilities)}</p>
-          </div>
-        </div>
-      )}
 
       {/* Bank Accounts & Cash */}
       {bankAccounts.length > 0 && (
