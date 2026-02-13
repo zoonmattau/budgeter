@@ -460,32 +460,42 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
               )}
             </div>
 
-            {/* Percentage chance */}
-            {deadline && milestonePreview && milestonePreview.percentageChance !== null && (
+            {/* Percentage chance — shows as soon as a deadline is picked */}
+            {deadline && (
               <div className={`p-5 rounded-xl text-center ${
-                milestonePreview.percentageChance >= 75 ? 'bg-sprout-50' :
-                milestonePreview.percentageChance >= 40 ? 'bg-amber-50' : 'bg-red-50'
+                milestonePreview && milestonePreview.percentageChance !== null && milestonePreview.percentageChance !== undefined
+                  ? milestonePreview.percentageChance >= 75 ? 'bg-sprout-50' :
+                    milestonePreview.percentageChance >= 40 ? 'bg-amber-50' : 'bg-red-50'
+                  : 'bg-gray-50'
               }`}>
-                <p className={`text-5xl font-bold ${
-                  milestonePreview.percentageChance >= 75 ? 'text-sprout-600' :
-                  milestonePreview.percentageChance >= 40 ? 'text-amber-600' : 'text-red-600'
-                }`}>
-                  {milestonePreview.percentageChance}%
-                </p>
-                <p className={`text-sm font-medium mt-1 ${
-                  milestonePreview.percentageChance >= 75 ? 'text-sprout-700' :
-                  milestonePreview.percentageChance >= 40 ? 'text-amber-700' : 'text-red-700'
-                }`}>
-                  chance of hitting this by {format(new Date(deadline), 'MMM yyyy')}
-                </p>
-                {milestonePreview.requiredMonthlyGrowth !== null && milestonePreview.requiredMonthlyGrowth > 0 && avgMonthlyGrowth > 0 && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    Needs +{formatCurrency(milestonePreview.requiredMonthlyGrowth)}/mo &middot; You&apos;re averaging +{formatCurrency(avgMonthlyGrowth)}/mo
-                  </p>
-                )}
-                {avgMonthlyGrowth === 0 && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    Track your net worth for a few months to improve this estimate
+                {milestonePreview && milestonePreview.percentageChance !== null && milestonePreview.percentageChance !== undefined ? (
+                  <>
+                    <p className={`text-5xl font-bold ${
+                      milestonePreview.percentageChance >= 75 ? 'text-sprout-600' :
+                      milestonePreview.percentageChance >= 40 ? 'text-amber-600' : 'text-red-600'
+                    }`}>
+                      {milestonePreview.percentageChance}%
+                    </p>
+                    <p className={`text-sm font-medium mt-1 ${
+                      milestonePreview.percentageChance >= 75 ? 'text-sprout-700' :
+                      milestonePreview.percentageChance >= 40 ? 'text-amber-700' : 'text-red-700'
+                    }`}>
+                      chance of hitting this by {format(new Date(deadline), 'MMM yyyy')}
+                    </p>
+                    {milestonePreview.requiredMonthlyGrowth !== null && milestonePreview.requiredMonthlyGrowth > 0 && avgMonthlyGrowth > 0 && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Needs +{formatCurrency(milestonePreview.requiredMonthlyGrowth)}/mo &middot; You&apos;re averaging +{formatCurrency(avgMonthlyGrowth)}/mo
+                      </p>
+                    )}
+                    {avgMonthlyGrowth === 0 && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Track your net worth for a few months to improve this estimate
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    {!targetAmount ? 'Enter a target amount to see your chances' : 'Enter a target above $0'}
                   </p>
                 )}
               </div>
