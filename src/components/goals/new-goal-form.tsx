@@ -65,12 +65,13 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     for (const pct of percentages) {
       const months = Math.ceil((pct / 85) * remaining / avgMonthlyGrowth)
       if (months > 0 && months <= 600) {
-        // Use last day of the target month so the full month counts in the calculation
         const d = new Date(now.getFullYear(), now.getMonth() + months + 1, 0)
+        // Format using local time to avoid UTC timezone shift
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         results.push({
           pct,
           date: d,
-          dateStr: d.toISOString().split('T')[0],
+          dateStr,
         })
       }
     }
@@ -476,7 +477,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                   type="button"
                   onClick={() => {
                     const d = new Date(milestonePreview.suggestedDate!)
-                    setDeadline(d.toISOString().split('T')[0])
+                    setDeadline(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
                   }}
                   className="w-full p-3 bg-white rounded-xl border-2 border-blue-300 hover:border-blue-500 transition-colors text-center"
                 >
