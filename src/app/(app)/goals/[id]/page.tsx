@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { GoalEditForm } from '@/components/goals/goal-edit-form'
+import { calculateAvgMonthlyChange, calculateMilestoneInfo } from '@/lib/net-worth-calculations'
+import type { MilestoneInfo } from '@/lib/net-worth-calculations'
 
 interface GoalPageProps {
   params: Promise<{ id: string }>
@@ -85,6 +87,36 @@ export default async function GoalPage({ params }: GoalPageProps) {
     }
   }
 
+  // Compute milestone info for net_worth_milestone goals
+  let milestoneInfo: MilestoneInfo | undefined
+  if (goal.goal_type === 'net_worth_milestone') {
+    const [{ data: accounts }, { data: snapshots }] = await Promise.all([
+      supabase
+        .from('accounts')
+        .select('id, balance, is_asset')
+        .eq('user_id', user.id),
+      supabase
+        .from('net_worth_snapshots')
+        .select('snapshot_date, net_worth, total_assets, total_liabilities')
+        .eq('user_id', user.id)
+        .order('snapshot_date', { ascending: true }),
+    ])
+
+    const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+    const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+    const netWorth = totalAssets - totalLiabilities
+    const avgMonthlyGrowth = (snapshots && snapshots.length >= 2)
+      ? calculateAvgMonthlyChange(snapshots, netWorth)
+      : 0
+
+    milestoneInfo = calculateMilestoneInfo(
+      netWorth,
+      Number(goal.target_amount),
+      avgMonthlyGrowth,
+      goal.deadline,
+    )
+  }
+
   return (
     <div className="space-y-6">
       <GoalEditForm
@@ -93,6 +125,7 @@ export default async function GoalPage({ params }: GoalPageProps) {
         isHouseholdGoal={!!goal.household_id}
         contributions={contributions}
         currentUserId={user.id}
+        milestoneInfo={milestoneInfo}
       />
     </div>
   )

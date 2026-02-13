@@ -177,6 +177,70 @@ export function projectArrivalDate(
   return arrival
 }
 
+export interface MilestoneInfo {
+  avgMonthlyGrowth: number
+  estimatedArrival: string | null // ISO date string
+  likelihood: 'on_track' | 'at_risk' | 'behind'
+  requiredMonthlyGrowth: number | null
+}
+
+/**
+ * Compute likelihood, estimated arrival, and required growth for a net_worth_milestone goal.
+ */
+export function calculateMilestoneInfo(
+  currentNetWorth: number,
+  targetAmount: number,
+  avgMonthlyGrowth: number,
+  deadline: string | null
+): MilestoneInfo {
+  const remaining = targetAmount - currentNetWorth
+  const arrival = projectArrivalDate(currentNetWorth, targetAmount, avgMonthlyGrowth)
+
+  let requiredMonthlyGrowth: number | null = null
+  let likelihood: 'on_track' | 'at_risk' | 'behind'
+
+  if (remaining <= 0) {
+    likelihood = 'on_track'
+  } else if (deadline) {
+    const deadlineDate = new Date(deadline)
+    const now = new Date()
+    const monthsRemaining = (deadlineDate.getFullYear() - now.getFullYear()) * 12 + (deadlineDate.getMonth() - now.getMonth())
+
+    if (monthsRemaining <= 0) {
+      likelihood = 'behind'
+      requiredMonthlyGrowth = remaining
+    } else {
+      requiredMonthlyGrowth = remaining / monthsRemaining
+
+      if (avgMonthlyGrowth <= 0) {
+        likelihood = 'behind'
+      } else {
+        const ratio = avgMonthlyGrowth / requiredMonthlyGrowth
+        if (ratio >= 0.9) likelihood = 'on_track'
+        else if (ratio >= 0.6) likelihood = 'at_risk'
+        else likelihood = 'behind'
+      }
+    }
+  } else {
+    // No deadline — judge by whether growth is positive and arrival is reasonable
+    if (avgMonthlyGrowth <= 0) {
+      likelihood = 'behind'
+    } else if (arrival) {
+      likelihood = 'on_track'
+    } else {
+      // arrival is null = would take >5 years
+      likelihood = 'at_risk'
+    }
+  }
+
+  return {
+    avgMonthlyGrowth,
+    estimatedArrival: arrival ? arrival.toISOString() : null,
+    likelihood,
+    requiredMonthlyGrowth,
+  }
+}
+
 /**
  * Generate monthly projection data points from current to target (or 60 months max).
  */

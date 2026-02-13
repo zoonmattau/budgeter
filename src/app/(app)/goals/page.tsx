@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { GoalCard } from '@/components/goals/goal-card'
+import { calculateAvgMonthlyChange, calculateMilestoneInfo } from '@/lib/net-worth-calculations'
+import type { MilestoneInfo } from '@/lib/net-worth-calculations'
 
 export default async function GoalsPage() {
   const supabase = await createClient()
@@ -9,12 +11,44 @@ export default async function GoalsPage() {
 
   if (!user) return null
 
-  const { data: goals } = await supabase
-    .from('goals')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('status', { ascending: true })
-    .order('created_at', { ascending: false })
+  const [{ data: goals }, { data: accounts }, { data: snapshots }] = await Promise.all([
+    supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('status', { ascending: true })
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('accounts')
+      .select('id, balance, is_asset')
+      .eq('user_id', user.id),
+    supabase
+      .from('net_worth_snapshots')
+      .select('snapshot_date, net_worth, total_assets, total_liabilities')
+      .eq('user_id', user.id)
+      .order('snapshot_date', { ascending: true }),
+  ])
+
+  // Compute net worth and growth for milestone goals
+  const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+  const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+  const netWorth = totalAssets - totalLiabilities
+  const avgMonthlyGrowth = (snapshots && snapshots.length >= 2)
+    ? calculateAvgMonthlyChange(snapshots, netWorth)
+    : 0
+
+  // Build milestone info map for net_worth_milestone goals
+  const milestoneInfoMap: Record<string, MilestoneInfo> = {}
+  for (const goal of (goals || [])) {
+    if (goal.goal_type === 'net_worth_milestone') {
+      milestoneInfoMap[goal.id] = calculateMilestoneInfo(
+        netWorth,
+        Number(goal.target_amount),
+        avgMonthlyGrowth,
+        goal.deadline,
+      )
+    }
+  }
 
   const activeGoals = goals?.filter(g => g.status === 'active') || []
   const completedGoals = goals?.filter(g => g.status === 'completed') || []
@@ -38,7 +72,7 @@ export default async function GoalsPage() {
       {activeGoals.length > 0 ? (
         <div className="grid gap-4">
           {activeGoals.map((goal) => (
-            <GoalCard key={goal.id} goal={goal} />
+            <GoalCard key={goal.id} goal={goal} milestoneInfo={milestoneInfoMap[goal.id]} />
           ))}
         </div>
       ) : (
@@ -63,7 +97,7 @@ export default async function GoalsPage() {
           <h2 className="font-display font-semibold text-gray-900 mb-3">Completed</h2>
           <div className="grid gap-3">
             {completedGoals.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} />
+              <GoalCard key={goal.id} goal={goal} milestoneInfo={milestoneInfoMap[goal.id]} />
             ))}
           </div>
         </div>

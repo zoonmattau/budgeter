@@ -7,19 +7,21 @@ import { PlantVisual } from './plant-visual'
 import { LikelihoodBadge } from './likelihood-badge'
 import { formatCurrency, calculateLikelihood, getRequiredMonthlySavings } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
+import type { MilestoneInfo } from '@/lib/net-worth-calculations'
 
 interface GoalCardProps {
   goal: Tables<'goals'>
+  milestoneInfo?: MilestoneInfo
 }
 
-export function GoalCard({ goal }: GoalCardProps) {
+export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
   const targetAmount = Number(goal.target_amount) || 0
   const currentAmount = Number(goal.current_amount) || 0
   const progress = targetAmount > 0
     ? (currentAmount / targetAmount) * 100
     : 0
-  const likelihood = calculateLikelihood(goal)
-  const requiredMonthly = getRequiredMonthlySavings(goal)
+  const likelihood = milestoneInfo ? milestoneInfo.likelihood : calculateLikelihood(goal)
+  const requiredMonthly = milestoneInfo ? milestoneInfo.requiredMonthlyGrowth : getRequiredMonthlySavings(goal)
   const isCompleted = goal.status === 'completed'
   const isDebtPayoff = goal.goal_type === 'debt_payoff'
   const isNetWorthMilestone = goal.goal_type === 'net_worth_milestone'
@@ -127,14 +129,34 @@ export function GoalCard({ goal }: GoalCardProps) {
                 {format(new Date(goal.deadline), 'MMM d, yyyy')}
               </span>
             )}
+            {isNetWorthMilestone && !isCompleted && milestoneInfo?.estimatedArrival && !goal.deadline && (
+              <span className="flex items-center gap-1 text-blue-500">
+                <Calendar className="w-3 h-3" />
+                Est. {format(new Date(milestoneInfo.estimatedArrival), 'MMM yyyy')}
+              </span>
+            )}
           </div>
 
-          {/* Required monthly savings/payment hint */}
+          {/* Required monthly savings/payment/growth hint */}
           {requiredMonthly !== null && requiredMonthly > 0 && !isCompleted && (
-            <p className={`text-xs mt-2 ${isDebtPayoff ? 'text-red-600' : 'text-bloom-600'}`}>
+            <p className={`text-xs mt-2 ${isDebtPayoff ? 'text-red-600' : isNetWorthMilestone ? 'text-blue-600' : 'text-bloom-600'}`}>
               {isDebtPayoff
                 ? `Pay ${formatCurrency(requiredMonthly)}/month to reach your goal`
-                : `Save ${formatCurrency(requiredMonthly)}/month to reach your goal`
+                : isNetWorthMilestone
+                  ? `Need +${formatCurrency(requiredMonthly)}/mo net worth growth`
+                  : `Save ${formatCurrency(requiredMonthly)}/month to reach your goal`
+              }
+            </p>
+          )}
+
+          {/* Estimated arrival for milestones without deadline */}
+          {isNetWorthMilestone && !isCompleted && !goal.deadline && milestoneInfo && (
+            <p className="text-xs mt-1 text-blue-500">
+              {milestoneInfo.estimatedArrival
+                ? `On track to reach by ${format(new Date(milestoneInfo.estimatedArrival), 'MMM yyyy')} at +${formatCurrency(milestoneInfo.avgMonthlyGrowth)}/mo`
+                : milestoneInfo.avgMonthlyGrowth > 0
+                  ? `Growing at +${formatCurrency(milestoneInfo.avgMonthlyGrowth)}/mo`
+                  : 'Net worth growth needed to reach this milestone'
               }
             </p>
           )}

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Trash2, Plus, CreditCard, CheckCircle2, Users, TrendingUp } from 'lucide-react'
 import { format } from 'date-fns'
+import { LikelihoodBadge } from './likelihood-badge'
+import type { MilestoneInfo } from '@/lib/net-worth-calculations'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { formatCurrency } from '@/lib/utils'
@@ -23,9 +25,10 @@ interface GoalEditFormProps {
   isHouseholdGoal?: boolean
   contributions?: Contribution[]
   currentUserId?: string
+  milestoneInfo?: MilestoneInfo
 }
 
-export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributions = [], currentUserId }: GoalEditFormProps) {
+export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributions = [], currentUserId, milestoneInfo }: GoalEditFormProps) {
   const router = useRouter()
   const [name, setName] = useState(goal.name)
   const [targetAmount, setTargetAmount] = useState(String(goal.target_amount))
@@ -240,12 +243,49 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
           </div>
         </div>
 
-        {/* Auto-tracking info for net worth milestones */}
-        {isNetWorthMilestone && !isCompleted && (
+        {/* Milestone projection info */}
+        {isNetWorthMilestone && !isCompleted && milestoneInfo && (
+          <div className="mt-4 pt-4 border-t border-white/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-blue-700 text-sm">
+                <TrendingUp className="w-4 h-4" />
+                <span className="font-medium">Milestone Projection</span>
+              </div>
+              <LikelihoodBadge likelihood={milestoneInfo.likelihood} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/40 rounded-xl p-3">
+                <p className="text-xs text-gray-500">Monthly Growth</p>
+                <p className={`text-sm font-bold ${milestoneInfo.avgMonthlyGrowth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                  {milestoneInfo.avgMonthlyGrowth >= 0 ? '+' : ''}{formatCurrency(milestoneInfo.avgMonthlyGrowth)}/mo
+                </p>
+              </div>
+              <div className="bg-white/40 rounded-xl p-3">
+                <p className="text-xs text-gray-500">Est. Arrival</p>
+                <p className="text-sm font-bold text-blue-700">
+                  {milestoneInfo.estimatedArrival
+                    ? format(new Date(milestoneInfo.estimatedArrival), 'MMM yyyy')
+                    : milestoneInfo.avgMonthlyGrowth <= 0 ? 'N/A' : '5+ years'}
+                </p>
+              </div>
+            </div>
+            {milestoneInfo.requiredMonthlyGrowth !== null && milestoneInfo.requiredMonthlyGrowth > 0 && (
+              <p className="text-xs text-blue-600">
+                Need +{formatCurrency(milestoneInfo.requiredMonthlyGrowth)}/mo growth to hit deadline
+              </p>
+            )}
+            <p className="text-xs text-gray-400">
+              Auto-tracks your net worth. Updates each time you visit the dashboard.
+            </p>
+          </div>
+        )}
+
+        {/* Simple auto-tracking note when no milestone data */}
+        {isNetWorthMilestone && !isCompleted && !milestoneInfo && (
           <div className="mt-4 pt-4 border-t border-white/30">
             <div className="flex items-center gap-2 text-blue-700 text-sm">
               <TrendingUp className="w-4 h-4" />
-              <p>This goal auto-tracks your net worth. Progress updates each time you visit your dashboard.</p>
+              <p>This goal auto-tracks your net worth. Add accounts to see projections.</p>
             </div>
           </div>
         )}
