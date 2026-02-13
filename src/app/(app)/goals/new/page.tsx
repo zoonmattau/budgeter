@@ -1,12 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Sparkles, Plane, Car, Home, Gift, GraduationCap, CreditCard, Wallet, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
+import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { formatCurrency } from '@/lib/utils'
+import { calculateAvgMonthlyChange, calculateMilestoneInfo } from '@/lib/net-worth-calculations'
+import { LikelihoodBadge } from '@/components/goals/likelihood-badge'
 import type { Tables } from '@/lib/database.types'
 
 const goalTemplates = [
@@ -34,6 +37,11 @@ export default function NewGoalPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('')
   const [loadingAccounts, setLoadingAccounts] = useState(false)
 
+  // Net worth milestone state
+  const [currentNetWorth, setCurrentNetWorth] = useState<number | null>(null)
+  const [avgMonthlyGrowth, setAvgMonthlyGrowth] = useState(0)
+  const [loadingNetWorth, setLoadingNetWorth] = useState(false)
+
   const supabase = createClient()
 
   // Fetch debt accounts when goal type changes to debt_payoff
@@ -43,6 +51,21 @@ export default function NewGoalPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalType])
+
+  // Fetch net worth data when goal type changes to net_worth_milestone
+  useEffect(() => {
+    if (goalType === 'net_worth_milestone') {
+      fetchNetWorthData()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalType])
+
+  const milestonePreview = useMemo(() => {
+    if (currentNetWorth === null || !targetAmount) return null
+    const target = parseFloat(targetAmount)
+    if (isNaN(target) || target <= 0) return null
+    return calculateMilestoneInfo(currentNetWorth, target, avgMonthlyGrowth, deadline || null)
+  }, [currentNetWorth, targetAmount, avgMonthlyGrowth, deadline])
 
   async function fetchDebtAccounts() {
     setLoadingAccounts(true)
@@ -59,6 +82,35 @@ export default function NewGoalPage() {
 
     setDebtAccounts(accounts || [])
     setLoadingAccounts(false)
+  }
+
+  async function fetchNetWorthData() {
+    setLoadingNetWorth(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setLoadingNetWorth(false); return }
+
+    const [{ data: accounts }, { data: snapshots }] = await Promise.all([
+      supabase
+        .from('accounts')
+        .select('id, balance, is_asset')
+        .eq('user_id', user.id),
+      supabase
+        .from('net_worth_snapshots')
+        .select('snapshot_date, net_worth, total_assets, total_liabilities')
+        .eq('user_id', user.id)
+        .order('snapshot_date', { ascending: true }),
+    ])
+
+    const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+    const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+    const nw = totalAssets - totalLiabilities
+    setCurrentNetWorth(nw)
+
+    if (snapshots && snapshots.length >= 2) {
+      setAvgMonthlyGrowth(calculateAvgMonthlyChange(snapshots, nw))
+    }
+
+    setLoadingNetWorth(false)
   }
 
   function handleTemplateSelect(template: typeof goalTemplates[0]) {
@@ -452,11 +504,69 @@ export default function NewGoalPage() {
               />
             </div>
 
-            <div className="p-4 bg-blue-50 rounded-xl">
-              <p className="text-sm text-blue-700">
-                <strong>Auto-tracking:</strong> Your progress updates automatically as your net worth changes. This milestone will appear on your net worth chart.
-              </p>
-            </div>
+            {/* Live Milestone Estimate */}
+            {loadingNetWorth && (
+              <div className="p-4 bg-blue-50 rounded-xl text-center text-blue-600 text-sm">
+                Loading your net worth data...
+              </div>
+            )}
+
+            {!loadingNetWorth && currentNetWorth !== null && (
+              <div className="p-4 bg-blue-50 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-blue-800">Your current net worth</p>
+                  <p className={`text-sm font-bold ${currentNetWorth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                    {formatCurrency(currentNetWorth)}
+                  </p>
+                </div>
+
+                {milestonePreview && parseFloat(targetAmount) > 0 && (
+                  <>
+                    <div className="border-t border-blue-100 pt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-medium text-blue-700">Projection</p>
+                        <LikelihoodBadge likelihood={milestonePreview.likelihood} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white/60 rounded-lg p-2.5">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Monthly Growth</p>
+                          <p className={`text-sm font-bold ${avgMonthlyGrowth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                            {avgMonthlyGrowth >= 0 ? '+' : ''}{formatCurrency(avgMonthlyGrowth)}/mo
+                          </p>
+                        </div>
+                        <div className="bg-white/60 rounded-lg p-2.5">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Est. Arrival</p>
+                          <p className="text-sm font-bold text-blue-700">
+                            {milestonePreview.estimatedArrival
+                              ? format(new Date(milestonePreview.estimatedArrival), 'MMM yyyy')
+                              : avgMonthlyGrowth <= 0 ? 'N/A' : '5+ years'}
+                          </p>
+                        </div>
+                      </div>
+                      {milestonePreview.requiredMonthlyGrowth !== null && milestonePreview.requiredMonthlyGrowth > 0 && deadline && (
+                        <p className="text-xs text-blue-600 mt-2">
+                          Need +{formatCurrency(milestonePreview.requiredMonthlyGrowth)}/mo growth to hit your deadline
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {avgMonthlyGrowth === 0 && (
+                  <p className="text-xs text-blue-500">
+                    Keep tracking your net worth to get growth projections.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!loadingNetWorth && currentNetWorth === null && (
+              <div className="p-4 bg-blue-50 rounded-xl">
+                <p className="text-sm text-blue-700">
+                  <strong>Auto-tracking:</strong> Add accounts in Net Worth to see live projections here.
+                </p>
+              </div>
+            )}
 
             <button
               type="submit"
