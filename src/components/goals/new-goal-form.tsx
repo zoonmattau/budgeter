@@ -63,11 +63,13 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     const results: { pct: number; date: Date; dateStr: string }[] = []
 
     for (const pct of percentages) {
-      const months = Math.ceil((pct / 85) * remaining / avgMonthlyGrowth)
+      // Exact fractional months needed for this percentage
+      const months = (pct / 85) * remaining / avgMonthlyGrowth
       if (months > 0 && months <= 600) {
-        // Use 15th of the target month to avoid timezone/end-of-month off-by-one issues
-        const d = new Date(now.getFullYear(), now.getMonth() + months, 15)
-        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-15`
+        // Convert to exact days and add to today
+        const days = Math.ceil(months * 30.44)
+        const d = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         results.push({
           pct,
           date: d,

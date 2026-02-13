@@ -234,7 +234,8 @@ export function calculateMilestoneInfo(
   } else if (deadline) {
     const deadlineDate = new Date(deadline)
     const now = new Date()
-    const monthsRemaining = (deadlineDate.getFullYear() - now.getFullYear()) * 12 + (deadlineDate.getMonth() - now.getMonth())
+    const diffMs = deadlineDate.getTime() - now.getTime()
+    const monthsRemaining = diffMs / (1000 * 60 * 60 * 24 * 30.44)
 
     if (monthsRemaining <= 0) {
       likelihood = 'behind'
