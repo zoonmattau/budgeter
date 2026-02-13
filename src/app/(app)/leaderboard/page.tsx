@@ -175,31 +175,45 @@ export default async function LeaderboardPage() {
   const friendsRankQuarterAgo = quarterAgoNW !== null ? computeRank(quarterAgoNW, allFriendsNetWorths) : null
   const friendsRankYearAgo = yearAgoNW !== null ? computeRank(yearAgoNW, allFriendsNetWorths) : null
 
-  // Build anonymized leaderboard entries for display
-  // Global: real users become anonymous + simulated users fill it out
+  // Build leaderboard entries for display
+  // Global: anonymous entries + user's own entry with net worth
   const anonymizedGlobal = allGlobalNetWorths
     .sort((a, b) => b - a)
-    .map((_, i) => ({ rank: i + 1, isUser: false }))
+    .map((_, i) => ({ rank: i + 1, isUser: false, displayName: null as string | null, netWorth: null as number | null }))
 
   // Insert user at their rank position
-  anonymizedGlobal.splice(globalRank - 1, 0, { rank: globalRank, isUser: true })
+  anonymizedGlobal.splice(globalRank - 1, 0, { rank: globalRank, isUser: true, displayName: null, netWorth: userNetWorth })
   // Re-rank after insertion
   const globalDisplay = anonymizedGlobal.map((entry, i) => ({
+    ...entry,
     rank: i + 1,
-    isUser: entry.isUser,
   }))
 
-  // Friends: just rank indicators
-  const friendsDisplay = Array.from({ length: friendsTotal }, (_, i) => ({
-    rank: i + 1,
-    isUser: i + 1 === friendsRank,
-  }))
+  // Friends: show real names and net worths (they opted in)
+  const sortedFriends = friendsEntries
+    .sort((a: { net_worth: number }, b: { net_worth: number }) => Number(b.net_worth) - Number(a.net_worth))
+    .map((entry: { user_id: string; display_name: string; net_worth: number }, i: number) => ({
+      rank: i + 1,
+      isUser: entry.user_id === user.id,
+      displayName: entry.user_id === user.id ? 'You' : (entry.display_name || 'Friend'),
+      netWorth: Number(entry.net_worth),
+    }))
+
+  // If user not in friends list (not opted in), insert them
+  const userInFriends = sortedFriends.some((e: { isUser: boolean }) => e.isUser)
+  const friendsDisplay = userInFriends
+    ? sortedFriends
+    : (() => {
+        const list = [...sortedFriends]
+        list.splice(friendsRank - 1, 0, { rank: friendsRank, isUser: true, displayName: 'You', netWorth: userNetWorth })
+        return list.map((entry: { rank: number; isUser: boolean; displayName: string | null; netWorth: number | null }, i: number) => ({ ...entry, rank: i + 1 }))
+      })()
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-gray-900">Leaderboard</h1>
-        <p className="text-gray-500 text-sm mt-1">See where you rank — all net worths are hidden</p>
+        <p className="text-gray-500 text-sm mt-1">See where you rank among friends and globally</p>
       </div>
 
       <LeaderboardClient

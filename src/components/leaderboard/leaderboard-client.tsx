@@ -7,6 +7,8 @@ import { Trophy, Users, Globe, Medal, UserPlus, TrendingUp, TrendingDown, Minus,
 interface LeaderboardEntry {
   rank: number
   isUser: boolean
+  displayName: string | null
+  netWorth: number | null
 }
 
 interface Movement {
@@ -268,6 +270,10 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
     icon: '',
   }
 
+  const formattedNetWorth = entry.netWorth !== null
+    ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(entry.netWorth)
+    : null
+
   return (
     <div
       className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
@@ -287,21 +293,20 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
 
       {/* Name */}
       <div className="flex-1 min-w-0">
-        {entry.isUser ? (
-          <p className="font-medium text-bloom-700">
-            You
-          </p>
-        ) : (
-          <p className="font-medium text-gray-400">
-            {entry.rank <= 3 ? ['Champion', 'Runner Up', 'Bronze'][entry.rank - 1] : `User #${entry.rank}`}
-          </p>
-        )}
+        <p className={`font-medium ${entry.isUser ? 'text-bloom-700' : entry.displayName ? 'text-gray-700' : 'text-gray-400'}`}>
+          {entry.isUser ? 'You' : (entry.displayName || `User #${entry.rank}`)}
+        </p>
       </div>
 
-      {/* Hidden net worth indicator */}
-      <div className="flex items-center gap-1">
-        {entry.isUser ? (
-          <span className="text-xs text-bloom-500 font-medium">Your position</span>
+      {/* Net worth */}
+      <div className="flex items-center">
+        {formattedNetWorth ? (
+          <span className={`text-sm font-semibold ${
+            entry.isUser ? 'text-bloom-600' :
+            entry.netWorth !== null && entry.netWorth < 0 ? 'text-red-500' : 'text-gray-600'
+          }`}>
+            {formattedNetWorth}
+          </span>
         ) : (
           <span className="text-xs text-gray-300">***</span>
         )}
