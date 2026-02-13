@@ -7,6 +7,7 @@ import { QuickAddButton } from '@/components/transactions/quick-add-button'
 import { InsightsTeaser } from '@/components/dashboard/quick-links'
 import { NetWorthCard } from '@/components/dashboard/net-worth-card'
 import { SmartPredictions } from '@/components/dashboard/smart-predictions'
+import { PendingConfirmations } from '@/components/dashboard/pending-confirmations'
 import { CreditLimitWarning } from '@/components/dashboard/credit-limit-warning'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { CashflowPreview } from '@/components/dashboard/cashflow-preview'
@@ -256,23 +257,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .lte('predicted_date', sevenDaysFromNow.toISOString().split('T')[0])
       .order('predicted_date', { ascending: true }),
 
-    // Recurring income for cash flow (personal only)
-    supabase
-      .from('income_entries')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_recurring', true),
+    // Recurring income for cash flow - scope aware
+    scope === 'household' && householdId
+      ? supabase
+          .from('income_entries')
+          .select('*')
+          .eq('household_id', householdId)
+          .eq('is_recurring', true)
+      : supabase
+          .from('income_entries')
+          .select('*')
+          .eq('user_id', user.id)
+          .is('household_id', null)
+          .eq('is_recurring', true),
 
-    // All active bills for cash flow and sinking fund calculations
+    // All active bills for cash flow, sinking funds, and pending confirmations
     scope === 'household' && householdId
       ? supabase
           .from('bills')
-          .select('*')
+          .select('*, categories(*)')
           .eq('household_id', householdId)
           .eq('is_active', true)
       : supabase
           .from('bills')
-          .select('*')
+          .select('*, categories(*)')
           .eq('user_id', user.id)
           .is('household_id', null)
           .eq('is_active', true),
@@ -365,6 +373,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // Get bank accounts for income deposits and expense payments
   const bankAccounts = accounts?.filter(a => a.type === 'bank' || a.type === 'cash') || []
+
+  // Compute pending bills and income (due today or overdue)
+  const todayStr = format(today, 'yyyy-MM-dd')
+  const pendingBills = (allBills || []).filter(b => b.next_due <= todayStr)
+  const pendingIncome = (recurringIncome || []).filter(i => i.next_pay_date && i.next_pay_date <= todayStr)
 
   // Create/update net worth snapshot if user has accounts (personal only)
   if (scope === 'personal' && accounts && accounts.length > 0) {
@@ -643,6 +656,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <SmartPredictions
         predictions={predictions || []}
         expenseCategories={expenseCategories || []}
+      />
+
+      {/* Pending Confirmations */}
+      <PendingConfirmations
+        pendingBills={pendingBills}
+        pendingIncome={pendingIncome}
+        bankAccounts={bankAccounts}
+        creditCards={creditCards}
+        incomeCategories={incomeCategories || []}
       />
 
       {/* Bills & Subscriptions Summary */}
