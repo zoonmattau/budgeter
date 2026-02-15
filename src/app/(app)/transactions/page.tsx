@@ -115,18 +115,30 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
       .select('*')
       .eq('user_id', user.id)
       .eq('type', 'income'),
-    supabase
-      .from('accounts')
-      .select('*')
-      .eq('user_id', user.id)
-      .is('household_id', null)
-      .in('type', ['credit', 'credit_card']),
-    supabase
-      .from('accounts')
-      .select('*')
-      .eq('user_id', user.id)
-      .is('household_id', null)
-      .order('name'),
+    scope === 'household' && householdId
+      ? supabase
+          .from('accounts')
+          .select('*')
+          .eq('household_id', householdId)
+          .in('type', ['credit', 'credit_card'])
+      : supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', user.id)
+          .is('household_id', null)
+          .in('type', ['credit', 'credit_card']),
+    scope === 'household' && householdId
+      ? supabase
+          .from('accounts')
+          .select('*')
+          .eq('household_id', householdId)
+          .order('name')
+      : supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', user.id)
+          .is('household_id', null)
+          .order('name'),
     accountFilter
       ? supabase
           .from('accounts')

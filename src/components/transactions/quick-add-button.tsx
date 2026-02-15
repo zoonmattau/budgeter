@@ -9,6 +9,7 @@ import { CategoryChip } from '@/components/ui/category-chip'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { DatePicker } from '@/components/ui/date-picker'
 import { CreateCategoryModal } from '@/components/categories/create-category-modal'
+import { useScopeOptional } from '@/lib/scope-context'
 import type { Tables } from '@/lib/database.types'
 
 interface QuickAddButtonProps {
@@ -68,6 +69,10 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
   const [frequency, setFrequency] = useState<Frequency>('monthly')
   const [showRecurringSuggestions, setShowRecurringSuggestions] = useState(false)
   const [billCreated, setBillCreated] = useState(false)
+
+  const scopeContext = useScopeOptional()
+  const isHouseholdScope = scopeContext?.scope === 'household' && !!scopeContext?.householdId
+  const householdId = scopeContext?.householdId || null
 
   const supabase = createClient()
 
@@ -198,6 +203,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
         account_id: selectedFromAccountId,
         to_account_id: selectedToAccountId,
         is_recurring: false,
+        ...(isHouseholdScope && { household_id: householdId }),
       })
 
       if (!txnError) {
@@ -259,6 +265,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
         date: date,
         account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : isInvestment ? selectedInvestmentId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
         is_recurring: isRecurring,
+        ...(isHouseholdScope && { household_id: householdId }),
       })
       error = txnError
     } else if (!isRecurring && !isSubscription && !isInvestment) {
@@ -272,6 +279,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
         date: date,
         account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
         is_recurring: false,
+        ...(isHouseholdScope && { household_id: householdId }),
       })
       error = txnError
     }
@@ -336,13 +344,20 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
     // If recurring (subscription, expense, or investment), create a bill automatically
     // But only if a bill with the same name doesn't already exist
     if (!error && isRecurring && (isExpense || isSubscription || isInvestment) && description) {
-      const { data: existingBill } = await supabase
+      let existingBillQuery = supabase
         .from('bills')
         .select('id')
-        .eq('user_id', user.id)
         .ilike('name', description)
         .eq('is_active', true)
         .limit(1)
+
+      if (isHouseholdScope) {
+        existingBillQuery = existingBillQuery.eq('household_id', householdId!)
+      } else {
+        existingBillQuery = existingBillQuery.eq('user_id', user.id)
+      }
+
+      const { data: existingBill } = await existingBillQuery
 
       if (!existingBill || existingBill.length === 0) {
         const dueDay = new Date(date).getDate()
@@ -361,6 +376,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
           due_day: dueDay,
           next_due: nextDue.toISOString().split('T')[0],
           is_active: true,
+          ...(isHouseholdScope && { household_id: householdId }),
         })
 
         if (!billError) {
