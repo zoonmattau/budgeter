@@ -308,7 +308,7 @@ export function BudgetBuilder({
     }
 
     const inserts = Object.entries(saveAllocations)
-      .filter(([, allocated]) => allocated > 0)
+      .filter(([, allocated]) => isHousehold ? allocated >= 0 : allocated > 0)
       .map(([categoryId, allocated]) => ({
         user_id: user.id,
         household_id: isHousehold ? householdId : null,
