@@ -239,6 +239,11 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
             {startVal !== 0 && (
               <p className="text-xs text-gray-400 mt-0.5">
                 Started at {formatCurrency(startVal)}
+                {Number(currentAmount) !== startVal && (
+                  <span className={Number(currentAmount) >= startVal ? 'text-blue-500 ml-2' : 'text-red-500 ml-2'}>
+                    {Number(currentAmount) >= startVal ? '+' : ''}{formatCurrency(Number(currentAmount) - startVal)} from start
+                  </span>
+                )}
               </p>
             )}
             <div className="h-2 bg-white/50 rounded-full overflow-hidden mt-2">
@@ -485,6 +490,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
             value={startingAmount}
             onChange={setStartingAmount}
             placeholder="0"
+            allowNegative
           />
           <p className="text-xs text-gray-400 mt-1">
             Where you started — used to calculate progress

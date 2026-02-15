@@ -109,6 +109,16 @@ export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
             )}
           </div>
 
+          {/* Progress from start for net worth milestones */}
+          {isNetWorthMilestone && !isCompleted && startAmount !== 0 && currentAmount !== startAmount && (
+            <p className="text-xs text-blue-500 -mt-1 mb-1">
+              {currentAmount >= startAmount
+                ? `+${formatCurrency(currentAmount - startAmount)} from start`
+                : `${formatCurrency(currentAmount - startAmount)} from start`
+              }
+            </p>
+          )}
+
           {/* Progress bar */}
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
             <div

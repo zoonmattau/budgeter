@@ -458,40 +458,50 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   }
 
   // Auto-track net worth milestone goals (personal scope only)
-  if (scope === 'personal' && goals) {
-    const milestoneGoals = goals.filter(g => g.goal_type === 'net_worth_milestone' && g.status === 'active')
-    const milestoneUpdates = milestoneGoals.map(async (goal) => {
-      const targetAmount = Number(goal.target_amount) || 0
-      const currentAmount = Number(goal.current_amount) || 0
+  // Fetch ALL active milestone goals separately (dashboard query is limited to 3 goals)
+  if (scope === 'personal') {
+    const { data: milestoneGoals } = await supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', user.id)
+      .is('household_id', null)
+      .eq('goal_type', 'net_worth_milestone')
+      .eq('status', 'active')
 
-      if (netWorth >= targetAmount && targetAmount > 0) {
-        // Auto-complete: net worth reached the milestone
-        const { error } = await supabase
-          .from('goals')
-          .update({
-            status: 'completed',
-            current_amount: targetAmount,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', goal.id)
-          .eq('status', 'active')
+    if (milestoneGoals && milestoneGoals.length > 0) {
+      const milestoneUpdates = milestoneGoals.map(async (goal) => {
+        const targetAmount = Number(goal.target_amount) || 0
+        const currentAmount = Number(goal.current_amount) || 0
 
-        if (error) console.error('Error completing milestone goal:', error)
-      } else if (Math.abs(netWorth - currentAmount) > 0.01) {
-        // Update current_amount to reflect current net worth
-        const { error } = await supabase
-          .from('goals')
-          .update({
-            current_amount: Math.max(0, netWorth),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', goal.id)
+        if (netWorth >= targetAmount) {
+          // Auto-complete: net worth reached the milestone
+          const { error } = await supabase
+            .from('goals')
+            .update({
+              status: 'completed',
+              current_amount: targetAmount,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', goal.id)
+            .eq('status', 'active')
 
-        if (error) console.error('Error updating milestone goal:', error)
-      }
-    })
+          if (error) console.error('Error completing milestone goal:', error)
+        } else if (Math.abs(netWorth - currentAmount) > 0.01) {
+          // Update current_amount to reflect current net worth
+          const { error } = await supabase
+            .from('goals')
+            .update({
+              current_amount: netWorth,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', goal.id)
 
-    await Promise.all(milestoneUpdates)
+          if (error) console.error('Error updating milestone goal:', error)
+        }
+      })
+
+      await Promise.all(milestoneUpdates)
+    }
   }
 
   // Cast transactions for components
