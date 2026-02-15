@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2, TrendingUp, Landmark, ArrowRightLeft } from 'lucide-react'
+import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2, TrendingUp, Landmark, ArrowRightLeft, Users, User } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -71,12 +71,19 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
   const [billCreated, setBillCreated] = useState(false)
 
   const scopeContext = useScopeOptional()
-  const isHouseholdScope = scopeContext?.scope === 'household' && !!scopeContext?.householdId
   const householdId = scopeContext?.householdId || null
+  const isInHousehold = !!householdId
+  const [forHousehold, setForHousehold] = useState(scopeContext?.scope === 'household' && isInHousehold)
+  const isHouseholdScope = forHousehold && isInHousehold
 
   const supabase = createClient()
 
-  const expenseCategories = localExpenseCategories
+  // Filter out budget-only categories that don't make sense for logging transactions
+  const budgetOnlyNames = ['savings', 'saving', 'emergency', 'emergency fund', 'subscriptions', 'subscription', 'fixed bills', 'bills', 'bills & subscriptions']
+  const allExpenseCategories = localExpenseCategories
+  const expenseCategories = localExpenseCategories.filter(c =>
+    !budgetOnlyNames.includes(c.name.toLowerCase())
+  )
   const incomeCategories = localIncomeCategories
   const categories = transactionType === 'income' ? incomeCategories : expenseCategories
   const isExpense = transactionType === 'expense'
@@ -102,6 +109,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
     setFrequency('monthly')
     setShowRecurringSuggestions(false)
     setBillCreated(false)
+    setForHousehold(scopeContext?.scope === 'household' && isInHousehold)
   }
 
   function handleOpen() {
@@ -195,7 +203,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
       // Insert transaction record
       const { error: txnError } = await supabase.from('transactions').insert({
         user_id: user.id,
-        category_id: expenseCategories[0]?.id,
+        category_id: allExpenseCategories[0]?.id,
         amount: paymentAmount,
         type: 'transfer',
         description: paymentDescription,
@@ -243,7 +251,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
     }
 
     // For subscriptions/investments without category, use first expense category as fallback
-    const categoryId = selectedCategory?.id || expenseCategories[0]?.id
+    const categoryId = selectedCategory?.id || allExpenseCategories[0]?.id
     if (!categoryId && !isInvestment) {
       setLoading(false)
       return
@@ -258,7 +266,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
     if (!isFutureDate) {
       const { error: txnError } = await supabase.from('transactions').insert({
         user_id: user.id,
-        category_id: categoryId || expenseCategories[0]?.id,
+        category_id: categoryId || allExpenseCategories[0]?.id,
         amount: parseFloat(amount),
         type: (isInvestment || isSubscription) ? 'expense' : transactionType,
         description: description || selectedCategory?.name || incomePreset || 'Income',
@@ -272,7 +280,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
       // Non-recurring future transactions still get created (user explicitly chose a future date)
       const { error: txnError } = await supabase.from('transactions').insert({
         user_id: user.id,
-        category_id: categoryId || expenseCategories[0]?.id,
+        category_id: categoryId || allExpenseCategories[0]?.id,
         amount: parseFloat(amount),
         type: transactionType,
         description: description || selectedCategory?.name || incomePreset || 'Income',
@@ -369,7 +377,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
 
         const { error: billError } = await supabase.from('bills').insert({
           user_id: user.id,
-          category_id: categoryId || expenseCategories[0]?.id,
+          category_id: categoryId || allExpenseCategories[0]?.id,
           name: description,
           amount: parseFloat(amount),
           frequency: frequency,
@@ -453,6 +461,36 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
+
+        {/* Personal / Household Toggle */}
+        {isInHousehold && !showSuccess && (
+          <div className="mb-4 flex rounded-xl bg-gray-100 p-1">
+            <button
+              type="button"
+              onClick={() => setForHousehold(false)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all ${
+                !forHousehold
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              Personal
+            </button>
+            <button
+              type="button"
+              onClick={() => setForHousehold(true)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all ${
+                forHousehold
+                  ? 'bg-white text-bloom-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              Household
+            </button>
+          </div>
+        )}
 
         {/* Success State */}
         {showSuccess ? (
