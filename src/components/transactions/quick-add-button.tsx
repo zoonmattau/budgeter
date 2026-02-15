@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, CreditCard, RefreshCw, Calendar, Sparkles, CheckCircle2, TrendingUp, Landmark, ArrowRightLeft, Users, User } from 'lucide-react'
+import { Plus, X, CreditCard, RefreshCw, Calendar, CheckCircle2, TrendingUp, Landmark, ArrowRightLeft, Users, User, ChevronDown } from 'lucide-react'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { CategoryChip } from '@/components/ui/category-chip'
@@ -33,16 +33,6 @@ const INCOME_PRESETS = [
   { name: 'Side Hustle', icon: 'briefcase' },
 ]
 
-// Common recurring expenses with typical amounts
-const RECURRING_SUGGESTIONS = [
-  { name: 'Netflix', amount: 23, category: 'Subscriptions' },
-  { name: 'Spotify', amount: 13, category: 'Subscriptions' },
-  { name: 'Gym', amount: 60, category: 'Health' },
-  { name: 'Phone', amount: 65, category: 'Utilities' },
-  { name: 'Internet', amount: 80, category: 'Utilities' },
-  { name: 'Electricity', amount: 150, category: 'Utilities' },
-  { name: 'Insurance', amount: 100, category: 'Insurance' },
-]
 
 export function QuickAddButton({ expenseCategories: initialExpenseCategories, incomeCategories: initialIncomeCategories, creditCards = [], investmentAccounts = [], bankAccounts = [], debtAccounts = [] }: QuickAddButtonProps) {
   const router = useRouter()
@@ -67,7 +57,6 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
   // Recurring transaction fields
   const [isRecurring, setIsRecurring] = useState(false)
   const [frequency, setFrequency] = useState<Frequency>('monthly')
-  const [showRecurringSuggestions, setShowRecurringSuggestions] = useState(false)
   const [billCreated, setBillCreated] = useState(false)
 
   const scopeContext = useScopeOptional()
@@ -107,7 +96,6 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
     setSelectedToAccountId(null)
     setIsRecurring(false)
     setFrequency('monthly')
-    setShowRecurringSuggestions(false)
     setBillCreated(false)
     setForHousehold(scopeContext?.scope === 'household' && isInHousehold)
   }
@@ -149,22 +137,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
     setIncomePreset(null)
   }
 
-  function handleRecurringSuggestion(suggestion: typeof RECURRING_SUGGESTIONS[0]) {
-    setDescription(suggestion.name)
-    setAmount(suggestion.amount.toString())
-    setIsRecurring(true)
-    setShowRecurringSuggestions(false)
-
-    // Try to find matching category
-    const matchingCat = expenseCategories.find(
-      c => c.name.toLowerCase().includes(suggestion.category.toLowerCase())
-    )
-    if (matchingCat) {
-      setSelectedCategory(matchingCat)
-    }
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
     // Validation: expenses require category, subscriptions/investments just need amount + description
@@ -517,65 +490,100 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
           </div>
         ) : (
           <>
-            {/* Type Toggle */}
-            <div className="mb-5">
-              <div className="grid grid-cols-5 gap-1 bg-gray-100 rounded-xl p-1">
+            {/* Type Toggle - Grouped */}
+            <div className="mb-5 space-y-2">
+              {/* Group selector */}
+              <div className="grid grid-cols-3 gap-1 bg-gray-100 rounded-xl p-1">
                 <button
                   type="button"
-                  onClick={() => handleTypeChange('expense')}
-                  className={`py-2 px-1.5 rounded-lg text-xs font-medium transition-all ${
-                    transactionType === 'expense'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Expense
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTypeChange('subscription')}
-                  className={`py-2 px-1.5 rounded-lg text-xs font-medium transition-all ${
-                    transactionType === 'subscription'
+                  onClick={() => { if (transactionType !== 'expense' && transactionType !== 'subscription') handleTypeChange('expense') }}
+                  className={`py-2.5 px-2 rounded-lg text-sm font-medium transition-all ${
+                    isExpense || isSubscription
                       ? 'bg-white text-bloom-600 shadow-sm'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  Recurring
+                  Money Out
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTypeChange('income')}
-                  className={`py-2 px-1.5 rounded-lg text-xs font-medium transition-all ${
-                    transactionType === 'income'
+                  onClick={() => { if (transactionType !== 'income' && transactionType !== 'investment') handleTypeChange('income') }}
+                  className={`py-2.5 px-2 rounded-lg text-sm font-medium transition-all ${
+                    transactionType === 'income' || isInvestment
                       ? 'bg-white text-sprout-600 shadow-sm'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  Income
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTypeChange('investment')}
-                  className={`py-2 px-1.5 rounded-lg text-xs font-medium transition-all ${
-                    transactionType === 'investment'
-                      ? 'bg-white text-sprout-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Invest
+                  Money In
                 </button>
                 <button
                   type="button"
                   onClick={() => handleTypeChange('payment')}
-                  className={`py-2 px-1.5 rounded-lg text-xs font-medium transition-all ${
-                    transactionType === 'payment'
+                  className={`py-2.5 px-2 rounded-lg text-sm font-medium transition-all ${
+                    isPayment
                       ? 'bg-white text-blue-600 shadow-sm'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  Payment
+                  Transfer
                 </button>
               </div>
+
+              {/* Sub-type selector for Money Out */}
+              {(isExpense || isSubscription) && (
+                <div className="grid grid-cols-2 gap-1 bg-bloom-50 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange('expense')}
+                    className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
+                      isExpense
+                        ? 'bg-white text-bloom-600 shadow-sm'
+                        : 'text-bloom-400 hover:text-bloom-600'
+                    }`}
+                  >
+                    One-off Expense
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange('subscription')}
+                    className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
+                      isSubscription
+                        ? 'bg-white text-bloom-600 shadow-sm'
+                        : 'text-bloom-400 hover:text-bloom-600'
+                    }`}
+                  >
+                    Recurring Bill
+                  </button>
+                </div>
+              )}
+
+              {/* Sub-type selector for Money In */}
+              {(transactionType === 'income' || isInvestment) && (
+                <div className="grid grid-cols-2 gap-1 bg-sprout-50 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange('income')}
+                    className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
+                      transactionType === 'income'
+                        ? 'bg-white text-sprout-600 shadow-sm'
+                        : 'text-sprout-400 hover:text-sprout-600'
+                    }`}
+                  >
+                    Income
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange('investment')}
+                    className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
+                      isInvestment
+                        ? 'bg-white text-sprout-600 shadow-sm'
+                        : 'text-sprout-400 hover:text-sprout-600'
+                    }`}
+                  >
+                    Investment
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Bill Created Success */}
@@ -587,35 +595,6 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
             )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Quick Recurring Suggestions - for expenses and subscriptions */}
-          {(isExpense || isSubscription) && !selectedCategory && !amount && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowRecurringSuggestions(!showRecurringSuggestions)}
-                className="flex items-center gap-2 text-sm text-bloom-600 hover:text-bloom-700 mb-2"
-              >
-                <Sparkles className="w-4 h-4" />
-                Quick add common bills
-              </button>
-
-              {showRecurringSuggestions && (
-                <div className="flex flex-wrap gap-2 mb-4 p-3 bg-bloom-50 rounded-xl">
-                  {RECURRING_SUGGESTIONS.map((suggestion) => (
-                    <button
-                      key={suggestion.name}
-                      type="button"
-                      onClick={() => handleRecurringSuggestion(suggestion)}
-                      className="px-3 py-1.5 bg-white rounded-lg text-sm text-gray-700 hover:bg-bloom-100 transition-colors shadow-sm"
-                    >
-                      {suggestion.name} (${suggestion.amount})
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Amount */}
           <div>
             <label className="label">Amount</label>
@@ -666,6 +645,24 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
                   <span className="text-[10px] text-gray-500 font-medium">New</span>
                 </button>
               </div>
+              {categories.length > 11 && (
+                <div className="mt-2 relative">
+                  <select
+                    value={selectedCategory && categories.indexOf(selectedCategory) >= 11 ? selectedCategory.id : ''}
+                    onChange={(e) => {
+                      const cat = categories.find(c => c.id === e.target.value)
+                      if (cat) handleCategorySelect(cat)
+                    }}
+                    className="input py-2 text-sm appearance-none pr-8"
+                  >
+                    <option value="">More categories...</option>
+                    {categories.slice(11).map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              )}
             </div>
           )}
 
@@ -729,7 +726,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
               {/* Income categories */}
               <p className="text-xs text-gray-400 mb-2">Or select a category:</p>
               <div className="grid grid-cols-4 gap-2">
-                {incomeCategories.map((cat) => (
+                {incomeCategories.slice(0, 11).map((cat) => (
                   <button
                     key={cat.id}
                     type="button"
@@ -760,6 +757,24 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
                   <span className="text-[10px] text-gray-500 font-medium">New</span>
                 </button>
               </div>
+              {incomeCategories.length > 11 && (
+                <div className="mt-2 relative">
+                  <select
+                    value={selectedCategory && incomeCategories.indexOf(selectedCategory) >= 11 ? selectedCategory.id : ''}
+                    onChange={(e) => {
+                      const cat = incomeCategories.find(c => c.id === e.target.value)
+                      if (cat) handleCategorySelect(cat)
+                    }}
+                    className="input py-2 text-sm appearance-none pr-8"
+                  >
+                    <option value="">More categories...</option>
+                    {incomeCategories.slice(11).map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              )}
             </div>
           )}
 
