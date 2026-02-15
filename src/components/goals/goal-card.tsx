@@ -17,9 +17,10 @@ interface GoalCardProps {
 export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
   const targetAmount = Number(goal.target_amount) || 0
   const currentAmount = Number(goal.current_amount) || 0
-  const progress = targetAmount > 0
-    ? (currentAmount / targetAmount) * 100
-    : 0
+  const startAmount = Number(goal.starting_amount) || 0
+  const progress = targetAmount !== startAmount
+    ? ((currentAmount - startAmount) / (targetAmount - startAmount)) * 100
+    : (currentAmount >= targetAmount ? 100 : 0)
   const likelihood = milestoneInfo ? milestoneInfo.likelihood : calculateLikelihood(goal)
   const requiredMonthly = milestoneInfo ? milestoneInfo.requiredMonthlyGrowth : getRequiredMonthlySavings(goal)
   const isCompleted = goal.status === 'completed'

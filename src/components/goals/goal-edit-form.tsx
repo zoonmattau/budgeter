@@ -37,6 +37,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [startingAmount, setStartingAmount] = useState(String(goal.starting_amount ?? 0))
   const [addAmount, setAddAmount] = useState('')
   const [showAddFunds, setShowAddFunds] = useState(false)
 
@@ -45,9 +46,10 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
   const isDebtPayoff = goal.goal_type === 'debt_payoff'
   const isNetWorthMilestone = goal.goal_type === 'net_worth_milestone'
   const isCompleted = goal.status === 'completed'
-  const progress = Number(goal.target_amount) > 0
-    ? (Number(currentAmount) / Number(goal.target_amount)) * 100
-    : 0
+  const startVal = Number(startingAmount) || 0
+  const progress = Number(goal.target_amount) !== startVal
+    ? ((Number(currentAmount) - startVal) / (Number(goal.target_amount) - startVal)) * 100
+    : (Number(currentAmount) >= Number(goal.target_amount) ? 100 : 0)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -62,6 +64,7 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
         name,
         target_amount: parseFloat(targetAmount),
         current_amount: parseFloat(currentAmount),
+        starting_amount: parseFloat(startingAmount) || 0,
         deadline: deadline || null,
         updated_at: new Date().toISOString(),
       })
@@ -233,6 +236,11 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
               <span className="text-gray-400">of</span>
               <span className="text-gray-600 font-medium">{formatCurrency(targetAmount)}</span>
             </div>
+            {startVal !== 0 && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                Started at {formatCurrency(startVal)}
+              </p>
+            )}
             <div className="h-2 bg-white/50 rounded-full overflow-hidden mt-2">
               <div
                 className={`h-full rounded-full transition-all ${isDebtPayoff ? 'bg-red-500' : isNetWorthMilestone ? 'bg-blue-500' : 'bg-sprout-500'}`}
@@ -468,6 +476,19 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
             placeholder="10,000"
             required
           />
+        </div>
+
+        <div>
+          <label htmlFor="starting-amount" className="label">Starting Amount</label>
+          <CurrencyInput
+            id="starting-amount"
+            value={startingAmount}
+            onChange={setStartingAmount}
+            placeholder="0"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Where you started — used to calculate progress
+          </p>
         </div>
 
         {!isDebtPayoff && !isNetWorthMilestone && (

@@ -34,6 +34,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
   const [goalType, setGoalType] = useState<GoalType>('savings')
   const [name, setName] = useState('')
   const [targetAmount, setTargetAmount] = useState('')
+  const [startingAmount, setStartingAmount] = useState('')
   const [deadline, setDeadline] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<typeof goalTemplates[0] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -106,11 +107,18 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    const startVal = goalType === 'savings'
+      ? (startingAmount ? parseFloat(startingAmount) : 0)
+      : goalType === 'debt_payoff'
+        ? (debtAccounts.find(a => a.id === selectedAccountId)?.balance ?? 0)
+        : currentNetWorth
+
     const { error } = await supabase.from('goals').insert({
       user_id: user.id,
       name,
       target_amount: parseFloat(targetAmount),
-      current_amount: 0,
+      current_amount: startVal,
+      starting_amount: startVal,
       deadline: deadline || null,
       icon: goalType === 'debt_payoff' ? 'credit-card' : goalType === 'net_worth_milestone' ? 'trending-up' : 'target',
       color: goalType === 'debt_payoff' ? '#ef4444' : goalType === 'net_worth_milestone' ? '#3b82f6' : (selectedTemplate?.color || '#d946ef'),
@@ -145,6 +153,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
               setGoalType('savings')
               setName('')
               setTargetAmount('')
+              setStartingAmount('')
               setSelectedAccountId('')
               setSelectedTemplate(null)
             }}
@@ -261,6 +270,18 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
               </div>
 
               <div>
+                <label className="label">Starting Amount</label>
+                <CurrencyInput
+                  value={startingAmount}
+                  onChange={setStartingAmount}
+                  placeholder="0"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  How much have you already saved towards this goal?
+                </p>
+              </div>
+
+              <div>
                 <label className="label">Target Date (optional)</label>
                 <input
                   type="date"
@@ -365,6 +386,18 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                   </p>
                 </div>
 
+                <div className="p-4 bg-blue-50 rounded-xl">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-blue-700">Starting balance</span>
+                    <span className="font-bold text-blue-700">
+                      {formatCurrency(debtAccounts.find(a => a.id === selectedAccountId)?.balance ?? 0)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-blue-500 mt-1">
+                    This will be recorded as your starting point for progress tracking
+                  </p>
+                </div>
+
                 <div>
                   <label className="label">Target Date (optional)</label>
                   <input
@@ -452,6 +485,18 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
               />
               <p className="text-xs text-gray-400 mt-1">
                 The net worth amount you want to reach
+              </p>
+            </div>
+
+            <div className="p-4 bg-blue-50 rounded-xl">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-blue-700">Current net worth (starting point)</span>
+                <span className={`font-bold ${currentNetWorth >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                  {formatCurrency(currentNetWorth)}
+                </span>
+              </div>
+              <p className="text-xs text-blue-500 mt-1">
+                This will be recorded as your starting point for progress tracking
               </p>
             </div>
 

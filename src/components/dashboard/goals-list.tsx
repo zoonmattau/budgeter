@@ -32,9 +32,10 @@ export function GoalsList({ goals }: GoalsListProps) {
   return (
     <div className="grid gap-3">
       {goals.map((goal) => {
-        const progress = goal.target_amount > 0
-          ? (goal.current_amount / goal.target_amount) * 100
-          : 0
+        const startAmount = Number(goal.starting_amount) || 0
+        const progress = goal.target_amount !== startAmount
+          ? ((goal.current_amount - startAmount) / (goal.target_amount - startAmount)) * 100
+          : (goal.current_amount >= goal.target_amount ? 100 : 0)
         const likelihood = calculateLikelihood(goal)
         const isDebtPayoff = goal.goal_type === 'debt_payoff'
         const remainingDebt = goal.target_amount - Number(goal.current_amount)

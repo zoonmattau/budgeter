@@ -431,6 +431,7 @@ export interface Database {
           color: string
           target_amount: number
           current_amount: number
+          starting_amount: number
           deadline: string | null
           status: 'active' | 'completed' | 'cancelled'
           visual_type: 'plant' | 'jar' | 'blocks'
@@ -448,6 +449,7 @@ export interface Database {
           color?: string
           target_amount: number
           current_amount?: number
+          starting_amount?: number
           deadline?: string | null
           status?: 'active' | 'completed' | 'cancelled'
           visual_type?: 'plant' | 'jar' | 'blocks'
@@ -465,6 +467,7 @@ export interface Database {
           color?: string
           target_amount?: number
           current_amount?: number
+          starting_amount?: number
           deadline?: string | null
           status?: 'active' | 'completed' | 'cancelled'
           visual_type?: 'plant' | 'jar' | 'blocks'
