@@ -126,9 +126,23 @@ export function BudgetOverview({
         <div className="flex items-start justify-between mb-4">
           <div>
             <p className="text-bloom-100 text-sm font-medium">
-              {isHousehold ? 'Household Spending Budget' : 'Spending Budget'}
+              {isHousehold ? 'Household Budget Spent' : 'Budget Spent'}
             </p>
-            <p className="text-3xl font-bold mt-1">{formatCurrency(spendableAllocated)}</p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <p className="text-3xl font-bold">{formatCurrency(spendableSpent)}</p>
+              {spendableAllocated > 0 && (
+                <span className={`text-sm font-semibold px-2 py-0.5 rounded-full ${
+                  spentPercentage > 100
+                    ? 'bg-coral-400/30 text-coral-200'
+                    : spentPercentage > 80
+                      ? 'bg-amber-400/30 text-amber-200'
+                      : 'bg-white/15 text-white/80'
+                }`}>
+                  {Math.round(spentPercentage)}%
+                </span>
+              )}
+            </div>
+            <p className="text-bloom-200 text-xs mt-0.5">of {formatCurrency(spendableAllocated)} budget</p>
           </div>
           <div className="text-right space-y-1">
             {fixedCosts > 0 && (
