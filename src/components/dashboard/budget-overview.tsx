@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Wallet, X } from 'lucide-react'
+import { ArrowRight, Wallet, X, TrendingDown, TrendingUp } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { MemberBreakdown, MemberSpending } from '@/components/ui/member-breakdown'
 import type { ViewScope } from '@/lib/scope-context'
@@ -21,6 +21,7 @@ interface BudgetOverviewProps {
   fixedCostItems?: FixedCostItem[]
   scope?: ViewScope
   memberBreakdown?: MemberSpending[]
+  lastMonthSpentSamePoint?: number
 }
 
 export function BudgetOverview({
@@ -32,6 +33,7 @@ export function BudgetOverview({
   fixedCostItems = [],
   scope = 'personal',
   memberBreakdown = [],
+  lastMonthSpentSamePoint = 0,
 }: BudgetOverviewProps) {
   const [showFixedCosts, setShowFixedCosts] = useState(false)
   const [showBudgetDetail, setShowBudgetDetail] = useState(false)
@@ -232,8 +234,26 @@ export function BudgetOverview({
 
         <div className="flex items-center justify-between text-sm">
           <div>
-            <p className="text-bloom-100">Spent</p>
-            <p className="font-semibold">{formatCurrency(spendableSpent)}</p>
+            <p className="text-bloom-100">vs Last Month</p>
+            {lastMonthSpentSamePoint > 0 ? (() => {
+              const diff = spendableSpent - lastMonthSpentSamePoint
+              const pctChange = Math.round(Math.abs(diff) / lastMonthSpentSamePoint * 100)
+              const isLess = diff < 0
+              return (
+                <div className="flex items-center gap-1">
+                  {isLess ? (
+                    <TrendingDown className="w-3.5 h-3.5 text-sprout-300" />
+                  ) : diff > 0 ? (
+                    <TrendingUp className="w-3.5 h-3.5 text-coral-300" />
+                  ) : null}
+                  <p className={`font-semibold ${isLess ? 'text-sprout-300' : diff > 0 ? 'text-coral-300' : ''}`}>
+                    {formatCurrency(Math.abs(diff))} {isLess ? 'less' : diff > 0 ? 'more' : 'same'}
+                  </p>
+                </div>
+              )
+            })() : (
+              <p className="font-semibold text-white/60">No data</p>
+            )}
           </div>
           <div className="text-right">
             <p className="text-bloom-100">Left to spend</p>

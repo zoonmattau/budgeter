@@ -12,7 +12,7 @@ import { CreditLimitWarning } from '@/components/dashboard/credit-limit-warning'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { CashflowPreview } from '@/components/dashboard/cashflow-preview'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
-import { format, startOfMonth, addDays, subDays } from 'date-fns'
+import { format, startOfMonth, subMonths, addDays, subDays } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
 
@@ -28,6 +28,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const params = await searchParams
   const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+  const lastMonthStart = format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd')
 
   // Calculate date range for predictions
   const today = new Date()
@@ -121,6 +122,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     { data: recurringIncome },
     { data: allBills },
     { data: budgetSettings },
+    { data: lastMonthTransactions },
   ] = await Promise.all([
     // Income entries - scope aware
     scope === 'household' && householdId
@@ -300,6 +302,28 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .eq('month', currentMonth)
           .is('household_id', null)
           .maybeSingle(),
+
+    // Last month's transactions up to same day — for trend comparison
+    (() => {
+      const sameDayLastMonth = format(
+        new Date(subMonths(today, 1).getFullYear(), subMonths(today, 1).getMonth(), Math.min(today.getDate(), new Date(subMonths(today, 1).getFullYear(), subMonths(today, 1).getMonth() + 1, 0).getDate())),
+        'yyyy-MM-dd'
+      )
+      return scope === 'household' && householdId
+        ? supabase
+            .from('transactions')
+            .select('amount, type')
+            .eq('household_id', householdId)
+            .gte('date', lastMonthStart)
+            .lte('date', sameDayLastMonth)
+        : supabase
+            .from('transactions')
+            .select('amount, type')
+            .eq('user_id', user.id)
+            .is('household_id', null)
+            .gte('date', lastMonthStart)
+            .lte('date', sameDayLastMonth)
+    })(),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
@@ -339,6 +363,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const householdContributionCost = scope === 'personal' && householdId ? userMonthlyContribution : 0
   const totalAllocated = categoryAllocated + monthlyDebtPayments + monthlySinkingFunds + extraDebtPayment + householdContributionCost
   const totalSpent = transactions
+    ?.filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + Number(t.amount), 0) || 0
+
+  const lastMonthSpentSamePoint = lastMonthTransactions
     ?.filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + Number(t.amount), 0) || 0
 
@@ -548,6 +576,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         fixedCostItems={fixedCostItems}
         scope={scope}
         memberBreakdown={memberBreakdown}
+        lastMonthSpentSamePoint={lastMonthSpentSamePoint}
       />
 
       {/* Net Worth & Goals Row */}
