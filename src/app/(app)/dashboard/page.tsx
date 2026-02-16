@@ -613,23 +613,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 const target = Number(goal.target_amount) || 0
                 const current = Number(goal.current_amount) || 0
                 const start = Number(goal.starting_amount) || 0
+                const debtTotals = (() => {
+                  const totalDebt = Math.max(Math.abs(target), Math.abs(start), current < 0 ? Math.abs(current) : 0)
+                  if (totalDebt <= 0) return { totalDebt: 0, paidOff: 0, remaining: 0 }
+                  const remaining = current < 0
+                    ? Math.abs(current)
+                    : target > 0
+                      ? Math.max(0, Math.abs(target) - current)
+                      : Math.max(0, totalDebt - current)
+                  const paidOff = Math.max(0, totalDebt - remaining)
+                  return { totalDebt, paidOff, remaining }
+                })()
                 const progress = isDebtPayoff
-                  ? (() => {
-                      const totalDebt = Math.max(Math.abs(target), Math.abs(start), current < 0 ? Math.abs(current) : 0)
-                      if (totalDebt <= 0) return 0
-                      const remaining = current < 0
-                        ? Math.abs(current)
-                        : target > 0
-                          ? Math.max(0, Math.abs(target) - current)
-                          : Math.max(0, totalDebt - current)
-                      return Math.max(0, Math.min(((totalDebt - remaining) / totalDebt) * 100, 100))
-                    })()
+                  ? (debtTotals.totalDebt > 0 ? Math.max(0, Math.min((debtTotals.paidOff / debtTotals.totalDebt) * 100, 100)) : 0)
                   : target > 0
-                    ? (current / target) * 100
+                    ? Math.max(0, Math.min((current / target) * 100, 100))
                     : 0
+                const progressCurrentAmount = isDebtPayoff ? debtTotals.paidOff : current
+                const progressTargetAmount = isDebtPayoff ? debtTotals.totalDebt : target
                 return (
                   <div key={goal.id}>
-                    <p className="text-xs text-gray-700 truncate">{goal.name}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-gray-700 truncate">{goal.name}</p>
+                      <p className="text-[10px] text-gray-500 whitespace-nowrap">{Math.round(progress)}%</p>
+                    </div>
                     <div className="h-1.5 bg-gray-200 rounded-full mt-1 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
@@ -642,6 +649,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         style={{ width: `${Math.min(progress, 100)}%` }}
                       />
                     </div>
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      {formatCurrency(progressCurrentAmount)} / {formatCurrency(progressTargetAmount)}
+                    </p>
                   </div>
                 )
               })}
