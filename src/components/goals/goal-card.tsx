@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import { Calendar, CheckCircle2, CreditCard, TrendingUp } from 'lucide-react'
 import { PlantVisual } from './plant-visual'
 import { LikelihoodBadge } from './likelihood-badge'
-import { formatCurrency, calculateLikelihood, getRequiredMonthlySavings } from '@/lib/utils'
+import { formatCurrency, calculateLikelihood, getRequiredMonthlySavings, getDebtPayoffMetrics } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
 import type { MilestoneInfo } from '@/lib/net-worth-calculations'
 
@@ -18,15 +18,18 @@ export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
   const targetAmount = Number(goal.target_amount) || 0
   const currentAmount = Number(goal.current_amount) || 0
   const startAmount = Number(goal.starting_amount) || 0
-  const progress = targetAmount !== startAmount
+  const isDebtPayoff = goal.goal_type === 'debt_payoff'
+  const debtMetrics = isDebtPayoff ? getDebtPayoffMetrics(targetAmount, currentAmount, startAmount) : null
+  const progress = isDebtPayoff
+    ? (debtMetrics?.progress || 0)
+    : targetAmount !== startAmount
     ? ((currentAmount - startAmount) / (targetAmount - startAmount)) * 100
     : (currentAmount >= targetAmount ? 100 : 0)
   const likelihood = milestoneInfo ? milestoneInfo.likelihood : calculateLikelihood(goal)
   const requiredMonthly = milestoneInfo ? milestoneInfo.requiredMonthlyGrowth : getRequiredMonthlySavings(goal)
-  const isCompleted = goal.status === 'completed'
-  const isDebtPayoff = goal.goal_type === 'debt_payoff'
+  const isCompleted = goal.status === 'completed' || (isDebtPayoff && (debtMetrics?.remainingDebt || 0) <= 0.01)
   const isNetWorthMilestone = goal.goal_type === 'net_worth_milestone'
-  const remainingDebt = Math.max(0, targetAmount - currentAmount)
+  const remainingDebt = debtMetrics?.remainingDebt || 0
 
   return (
     <Link href={`/goals/${goal.id}`} className="card-hover block">

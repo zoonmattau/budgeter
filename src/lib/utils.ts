@@ -131,3 +131,52 @@ export function getProgressPercentage(current: number, target: number): number {
   if (target <= 0) return 0
   return Math.min((current / target) * 100, 100)
 }
+
+interface DebtPayoffMetrics {
+  totalDebt: number
+  paidOff: number
+  remainingDebt: number
+  progress: number
+}
+
+/**
+ * Normalizes debt-payoff progress to handle legacy data where balances/targets
+ * may be stored as either positive owed amounts or negative account balances.
+ */
+export function getDebtPayoffMetrics(
+  targetAmount: number,
+  currentAmount: number,
+  startingAmount: number = 0
+): DebtPayoffMetrics {
+  const epsilon = 0.01
+  const totalDebt = Math.max(
+    Math.abs(targetAmount) || 0,
+    Math.abs(startingAmount) || 0,
+    currentAmount < 0 ? Math.abs(currentAmount) : 0
+  )
+
+  if (totalDebt <= epsilon) {
+    return { totalDebt: 0, paidOff: 0, remainingDebt: 0, progress: 100 }
+  }
+
+  let remainingDebt: number
+  if (currentAmount < 0) {
+    // Legacy representation: current_amount stores current debt balance (negative).
+    remainingDebt = Math.abs(currentAmount)
+  } else if (targetAmount > 0) {
+    // Current representation: current_amount stores amount paid off toward target_amount.
+    remainingDebt = Math.max(0, Math.abs(targetAmount) - currentAmount)
+  } else if (startingAmount < 0 || Math.abs(startingAmount) > 0) {
+    // Fallback for debt-free style goals with target 0 and negative starting point.
+    remainingDebt = Math.max(0, Math.abs(startingAmount) - currentAmount)
+  } else {
+    remainingDebt = Math.max(0, totalDebt - currentAmount)
+  }
+
+  if (remainingDebt <= epsilon) remainingDebt = 0
+
+  const paidOff = Math.max(0, totalDebt - remainingDebt)
+  const progress = Math.max(0, Math.min((paidOff / totalDebt) * 100, 100))
+
+  return { totalDebt, paidOff, remainingDebt, progress }
+}

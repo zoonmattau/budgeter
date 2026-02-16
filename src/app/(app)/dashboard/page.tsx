@@ -348,7 +348,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     weekly: 4.33, fortnightly: 2.17, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12,
   }
   const debtAccounts = accounts?.filter(a =>
-    (a.type === 'credit' || a.type === 'credit_card' || a.type === 'debt' || a.type === 'loan') && a.balance > 0
+    (a.type === 'credit' || a.type === 'credit_card' || a.type === 'debt' || a.type === 'loan') && Math.abs(Number(a.balance) || 0) > 0
   ) || []
   const monthlyDebtPayments = debtAccounts.reduce((total, a) => {
     if (!a.minimum_payment) return total
@@ -424,26 +424,32 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
       const currentAmount = Number(goal.current_amount) || 0
       const targetAmount = Number(goal.target_amount) || 0
-      const accountBalance = Number(linkedAccount.balance) || 0
+      const startingAmount = Number(goal.starting_amount) || 0
+      const accountDebt = Math.abs(Number(linkedAccount.balance) || 0)
+      const totalDebt = Math.max(Math.abs(targetAmount), Math.abs(startingAmount), accountDebt)
+      const paidOff = Math.max(0, totalDebt - accountDebt)
 
-      if (accountBalance <= 0 && goal.status !== 'completed') {
+      if (accountDebt <= 0.01 && goal.status !== 'completed') {
         const { error } = await supabase
           .from('goals')
           .update({
             status: 'completed',
-            current_amount: targetAmount,
+            target_amount: totalDebt,
+            starting_amount: totalDebt,
+            current_amount: totalDebt,
             updated_at: new Date().toISOString(),
           })
           .eq('id', goal.id)
           .eq('status', 'active')
 
         if (error) console.error('Error completing goal:', error)
-      } else if (accountBalance > 0) {
-        const paidOff = Math.max(0, targetAmount - accountBalance)
+      } else {
         if (Math.abs(paidOff - currentAmount) > 0.01) {
           const { error } = await supabase
             .from('goals')
             .update({
+              target_amount: totalDebt,
+              starting_amount: totalDebt,
               current_amount: paidOff,
               updated_at: new Date().toISOString(),
             })
@@ -613,9 +619,24 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           {(goals || []).length > 0 ? (
             <div className="space-y-2">
               {(goals || []).slice(0, 2).map((goal) => {
-                const progress = goal.target_amount > 0
-                  ? (goal.current_amount / goal.target_amount) * 100
-                  : 0
+                const isDebtPayoff = goal.goal_type === 'debt_payoff'
+                const target = Number(goal.target_amount) || 0
+                const current = Number(goal.current_amount) || 0
+                const start = Number(goal.starting_amount) || 0
+                const progress = isDebtPayoff
+                  ? (() => {
+                      const totalDebt = Math.max(Math.abs(target), Math.abs(start), current < 0 ? Math.abs(current) : 0)
+                      if (totalDebt <= 0) return 0
+                      const remaining = current < 0
+                        ? Math.abs(current)
+                        : target > 0
+                          ? Math.max(0, Math.abs(target) - current)
+                          : Math.max(0, totalDebt - current)
+                      return Math.max(0, Math.min(((totalDebt - remaining) / totalDebt) * 100, 100))
+                    })()
+                  : target > 0
+                    ? (current / target) * 100
+                    : 0
                 return (
                   <div key={goal.id}>
                     <p className="text-xs text-gray-700 truncate">{goal.name}</p>
@@ -711,7 +732,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         bills={bills || []}
         debtAccounts={accounts?.filter(a =>
           (a.type === 'credit' || a.type === 'credit_card' || a.type === 'loan' || a.type === 'debt') &&
-          a.balance > 0 &&
+          Math.abs(Number(a.balance) || 0) > 0 &&
           a.due_date &&
           a.minimum_payment
         ) || []}

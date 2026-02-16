@@ -9,7 +9,7 @@ import { LikelihoodBadge } from './likelihood-badge'
 import type { MilestoneInfo } from '@/lib/net-worth-calculations'
 import { createClient } from '@/lib/supabase/client'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, getDebtPayoffMetrics } from '@/lib/utils'
 import { PlantVisual } from './plant-visual'
 import type { Tables } from '@/lib/database.types'
 
@@ -45,11 +45,16 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
 
   const isDebtPayoff = goal.goal_type === 'debt_payoff'
   const isNetWorthMilestone = goal.goal_type === 'net_worth_milestone'
-  const isCompleted = goal.status === 'completed'
   const startVal = Number(startingAmount) || 0
-  const progress = Number(goal.target_amount) !== startVal
+  const debtMetrics = isDebtPayoff
+    ? getDebtPayoffMetrics(Number(targetAmount), Number(currentAmount), startVal)
+    : null
+  const progress = isDebtPayoff
+    ? (debtMetrics?.progress || 0)
+    : Number(goal.target_amount) !== startVal
     ? ((Number(currentAmount) - startVal) / (Number(goal.target_amount) - startVal)) * 100
     : (Number(currentAmount) >= Number(goal.target_amount) ? 100 : 0)
+  const isCompleted = goal.status === 'completed' || (isDebtPayoff && (debtMetrics?.remainingDebt || 0) <= 0.01)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -231,10 +236,16 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
             <h2 className="font-display text-lg font-semibold text-gray-900">{goal.name}</h2>
             <div className="flex items-baseline gap-2 mt-1">
               <span className={`text-2xl font-bold ${isDebtPayoff ? 'text-red-600' : isNetWorthMilestone ? 'text-blue-600' : 'text-bloom-600'}`}>
-                {formatCurrency(currentAmount)}
+                {isDebtPayoff ? formatCurrency(debtMetrics?.remainingDebt || 0) : formatCurrency(currentAmount)}
               </span>
-              <span className="text-gray-400">of</span>
-              <span className="text-gray-600 font-medium">{formatCurrency(targetAmount)}</span>
+              {isDebtPayoff ? (
+                <span className="text-gray-400 text-sm">remaining</span>
+              ) : (
+                <>
+                  <span className="text-gray-400">of</span>
+                  <span className="text-gray-600 font-medium">{formatCurrency(targetAmount)}</span>
+                </>
+              )}
             </div>
             {startVal !== 0 && (
               <p className="text-xs text-gray-400 mt-0.5">

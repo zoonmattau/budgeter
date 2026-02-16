@@ -26,8 +26,7 @@ export default async function DebtPlannerPage() {
       .from('accounts')
       .select('*')
       .eq('user_id', user.id)
-      .in('type', ['credit', 'credit_card', 'loan', 'debt'])
-      .gt('balance', 0),
+      .in('type', ['credit', 'credit_card', 'loan', 'debt']),
     // Fetch income entries for current month
     supabase
       .from('income_entries')
@@ -58,15 +57,17 @@ export default async function DebtPlannerPage() {
   ])
 
   // Transform accounts to Debt type with original amount for progress tracking
-  const debts: Debt[] = (accounts || []).map(account => ({
+  const debts: Debt[] = (accounts || [])
+    .filter(account => Math.abs(Number(account.balance) || 0) > 0)
+    .map(account => ({
     id: account.id,
     name: account.name,
-    balance: account.balance,
+    balance: Math.abs(Number(account.balance) || 0),
     interestRate: account.interest_rate || 0,
     minimumPayment: account.minimum_payment || 0,
     institution: account.institution,
     type: account.type,
-    originalAmount: account.original_amount || account.balance,
+    originalAmount: Math.abs(Number(account.original_amount || account.balance) || 0),
   }))
 
   // Calculate total debt paid off (original - current balance)

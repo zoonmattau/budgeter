@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { CreditCard } from 'lucide-react'
 import { PlantVisual } from '@/components/goals/plant-visual'
 import { LikelihoodBadge } from '@/components/goals/likelihood-badge'
-import { formatCurrency, calculateLikelihood } from '@/lib/utils'
+import { formatCurrency, calculateLikelihood, getDebtPayoffMetrics } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
 
 interface GoalsListProps {
@@ -33,12 +33,17 @@ export function GoalsList({ goals }: GoalsListProps) {
     <div className="grid gap-3">
       {goals.map((goal) => {
         const startAmount = Number(goal.starting_amount) || 0
-        const progress = goal.target_amount !== startAmount
+        const isDebtPayoff = goal.goal_type === 'debt_payoff'
+        const debtMetrics = isDebtPayoff
+          ? getDebtPayoffMetrics(Number(goal.target_amount), Number(goal.current_amount), startAmount)
+          : null
+        const progress = isDebtPayoff
+          ? (debtMetrics?.progress || 0)
+          : goal.target_amount !== startAmount
           ? ((goal.current_amount - startAmount) / (goal.target_amount - startAmount)) * 100
           : (goal.current_amount >= goal.target_amount ? 100 : 0)
         const likelihood = calculateLikelihood(goal)
-        const isDebtPayoff = goal.goal_type === 'debt_payoff'
-        const remainingDebt = goal.target_amount - Number(goal.current_amount)
+        const remainingDebt = debtMetrics?.remainingDebt || 0
 
         return (
           <Link

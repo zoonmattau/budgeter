@@ -106,7 +106,7 @@ export default async function NetWorthPage() {
     weekly: 4.33, fortnightly: 2.17, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12,
   }
   const debtAccountsList = (accounts || []).filter(a =>
-    (a.type === 'credit' || a.type === 'credit_card' || a.type === 'debt' || a.type === 'loan') && a.balance > 0
+    (a.type === 'credit' || a.type === 'credit_card' || a.type === 'debt' || a.type === 'loan') && Math.abs(Number(a.balance) || 0) > 0
   )
   const monthlyDebtPayments = debtAccountsList.reduce((total, a) => {
     if (!a.minimum_payment) return total

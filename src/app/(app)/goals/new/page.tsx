@@ -47,8 +47,8 @@ export default async function NewGoalPage() {
   ])
 
   const debtAccounts = (accounts || []).filter(
-    a => !a.is_asset && Number(a.balance) > 0
-  ).sort((a, b) => Number(b.balance) - Number(a.balance))
+    a => !a.is_asset && Math.abs(Number(a.balance) || 0) > 0
+  ).sort((a, b) => Math.abs(Number(b.balance) || 0) - Math.abs(Number(a.balance) || 0))
 
   const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
   const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0

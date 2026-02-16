@@ -93,7 +93,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     const account = debtAccounts.find(a => a.id === accountId)
     if (account) {
       setName(`Pay off ${account.name}`)
-      setTargetAmount(account.balance.toString())
+      setTargetAmount(Math.abs(Number(account.balance) || 0).toString())
     }
   }
 
@@ -110,13 +110,18 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     const startVal = goalType === 'savings'
       ? (startingAmount ? parseFloat(startingAmount) : 0)
       : goalType === 'debt_payoff'
-        ? (debtAccounts.find(a => a.id === selectedAccountId)?.balance ?? 0)
+        ? 0
         : currentNetWorth
+
+    const rawTarget = parseFloat(targetAmount)
+    const normalizedTarget = goalType === 'debt_payoff'
+      ? Math.abs(rawTarget || 0)
+      : rawTarget
 
     const { error } = await supabase.from('goals').insert({
       user_id: user.id,
       name,
-      target_amount: parseFloat(targetAmount),
+      target_amount: normalizedTarget,
       current_amount: startVal,
       starting_amount: startVal,
       deadline: deadline || null,
@@ -350,7 +355,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-bold text-red-600">{formatCurrency(account.balance)}</p>
+                        <p className="font-bold text-red-600">{formatCurrency(Math.abs(Number(account.balance) || 0))}</p>
                         <p className="text-xs text-gray-400">owing</p>
                       </div>
                     </button>
@@ -390,7 +395,7 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-blue-700">Starting balance</span>
                     <span className="font-bold text-blue-700">
-                      {formatCurrency(debtAccounts.find(a => a.id === selectedAccountId)?.balance ?? 0)}
+                      {formatCurrency(Math.abs(Number(debtAccounts.find(a => a.id === selectedAccountId)?.balance) || 0))}
                     </span>
                   </div>
                   <p className="text-xs text-blue-500 mt-1">
