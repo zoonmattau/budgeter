@@ -283,80 +283,128 @@ export function BudgetBuilder({
         contributionCategoryId = createdCategory.id
       }
 
-      const selectedAccount = [...bankAccounts]
-        .sort((a, b) => Number(b.balance) - Number(a.balance))[0]
-      const selectedAccountId = selectedAccount?.id || null
-
-      // Create or update personal expense transaction for this month's commit
-      const { data: existingTx } = await supabase
-        .from('transactions')
-        .select('id, amount, account_id')
-        .eq('user_id', user.id)
-        .is('household_id', null)
-        .eq('type', 'expense')
-        .eq('description', commitDescription)
-        .eq('date', today)
+      // If household has a cash/bank account, auto-transfer there now.
+      // If not, keep funds with the user until household expenses are logged.
+      const { data: householdCashAccount } = await supabase
+        .from('accounts')
+        .select('id, balance, type')
+        .eq('household_id', householdId)
+        .in('type', ['bank', 'cash'])
+        .order('balance', { ascending: false })
+        .limit(1)
         .maybeSingle()
 
-      if (existingTx) {
-        const delta = userMonthlyContribution - Number(existingTx.amount)
-        const accountToAdjustId = existingTx.account_id || selectedAccountId
+      if (householdCashAccount) {
+        const sourceAccount = [...bankAccounts]
+          .sort((a, b) => Number(b.balance) - Number(a.balance))[0]
+        const sourceAccountId = sourceAccount?.id || null
 
-        const { error: txUpdateError } = await supabase
-          .from('transactions')
-          .update({
-            category_id: contributionCategoryId,
-            amount: userMonthlyContribution,
-            account_id: accountToAdjustId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingTx.id)
-
-        if (txUpdateError) {
-          console.error('Failed to update contribution transaction:', txUpdateError)
+        if (!sourceAccountId) {
+          console.error('No personal bank/cash account available to fund household contribution transfer')
           return
         }
 
-        if (accountToAdjustId && Math.abs(delta) > 0.01) {
-          const account = bankAccounts.find(a => a.id === accountToAdjustId)
-          if (account) {
-            await supabase
-              .from('accounts')
-              .update({
-                balance: Number(account.balance) - delta,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', accountToAdjustId)
+        const { data: existingTransfer } = await supabase
+          .from('transactions')
+          .select('id, amount, account_id, to_account_id')
+          .eq('user_id', user.id)
+          .eq('household_id', householdId)
+          .eq('type', 'transfer')
+          .eq('description', commitDescription)
+          .eq('date', today)
+          .maybeSingle()
+
+        if (existingTransfer) {
+          const previousAmount = Number(existingTransfer.amount) || 0
+          const delta = userMonthlyContribution - previousAmount
+          const fromAccountId = existingTransfer.account_id || sourceAccountId
+          const toAccountId = existingTransfer.to_account_id || householdCashAccount.id
+
+          const { error: transferUpdateError } = await supabase
+            .from('transactions')
+            .update({
+              category_id: contributionCategoryId,
+              amount: userMonthlyContribution,
+              account_id: sourceAccountId,
+              to_account_id: householdCashAccount.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingTransfer.id)
+
+          if (transferUpdateError) {
+            console.error('Failed to update contribution transfer:', transferUpdateError)
+            return
           }
-        }
-      } else {
-        const { error: txInsertError } = await supabase
-          .from('transactions')
-          .insert({
-            user_id: user.id,
-            household_id: null,
-            category_id: contributionCategoryId,
-            amount: userMonthlyContribution,
-            type: 'expense',
-            description: commitDescription,
-            date: today,
-            account_id: selectedAccountId,
-            is_recurring: false,
-          })
 
-        if (txInsertError) {
-          console.error('Failed to create contribution transaction:', txInsertError)
-          return
-        }
+          if (Math.abs(delta) > 0.01) {
+            const { data: fromAccount } = await supabase
+              .from('accounts')
+              .select('id, balance')
+              .eq('id', fromAccountId)
+              .maybeSingle()
 
-        if (selectedAccountId && selectedAccount) {
+            if (fromAccount) {
+              await supabase
+                .from('accounts')
+                .update({
+                  balance: Number(fromAccount.balance) - delta,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', fromAccountId)
+            }
+
+            const { data: toAccount } = await supabase
+              .from('accounts')
+              .select('id, balance')
+              .eq('id', toAccountId)
+              .maybeSingle()
+
+            if (toAccount) {
+              await supabase
+                .from('accounts')
+                .update({
+                  balance: Number(toAccount.balance) + delta,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', toAccountId)
+            }
+          }
+        } else {
+          const { error: transferInsertError } = await supabase
+            .from('transactions')
+            .insert({
+              user_id: user.id,
+              household_id: householdId,
+              category_id: contributionCategoryId,
+              amount: userMonthlyContribution,
+              type: 'transfer',
+              description: commitDescription,
+              date: today,
+              account_id: sourceAccountId,
+              to_account_id: householdCashAccount.id,
+              is_recurring: false,
+            })
+
+          if (transferInsertError) {
+            console.error('Failed to create contribution transfer:', transferInsertError)
+            return
+          }
+
           await supabase
             .from('accounts')
             .update({
-              balance: Number(selectedAccount.balance) - userMonthlyContribution,
+              balance: Number(sourceAccount.balance) - userMonthlyContribution,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', selectedAccountId)
+            .eq('id', sourceAccountId)
+
+          await supabase
+            .from('accounts')
+            .update({
+              balance: Number(householdCashAccount.balance) + userMonthlyContribution,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', householdCashAccount.id)
         }
       }
 
