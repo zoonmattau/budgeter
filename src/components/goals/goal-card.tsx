@@ -30,6 +30,16 @@ export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
   const isCompleted = goal.status === 'completed' || (isDebtPayoff && (debtMetrics?.remainingDebt || 0) <= 0.01)
   const isNetWorthMilestone = goal.goal_type === 'net_worth_milestone'
   const remainingDebt = debtMetrics?.remainingDebt || 0
+  const chanceTrendPoints = milestoneInfo?.chanceTrendPoints || []
+  const chanceSparklinePoints = chanceTrendPoints.length > 1
+    ? chanceTrendPoints
+      .map((point, index) => {
+        const x = (index / (chanceTrendPoints.length - 1)) * 100
+        const y = 24 - ((point.chance / 99) * 24)
+        return `${x},${Math.max(0, Math.min(24, y))}`
+      })
+      .join(' ')
+    : null
 
   return (
     <Link href={`/goals/${goal.id}`} className="card-hover block">
@@ -86,6 +96,18 @@ export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
                 }`}>
                   {milestoneInfo.percentageChance}% chance
                 </p>
+                {chanceSparklinePoints && (
+                  <svg viewBox="0 0 100 24" className="w-20 h-5 mt-0.5 ml-auto">
+                    <polyline
+                      fill="none"
+                      stroke={milestoneInfo.chanceChangeFromStart !== null && milestoneInfo.chanceChangeFromStart < 0 ? '#ef4444' : '#22c55e'}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={chanceSparklinePoints}
+                    />
+                  </svg>
+                )}
                 {milestoneInfo.chanceChangeFromStart !== null && (
                   <p className={`text-[11px] ${
                     milestoneInfo.chanceChangeFromStart > 0

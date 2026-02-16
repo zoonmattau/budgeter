@@ -193,11 +193,12 @@ export function projectArrivalDate(
 export interface MilestoneInfo {
   avgMonthlyGrowth: number
   estimatedArrival: string | null // ISO date string
-  suggestedDate: string | null // ISO date string — best target date at current pace
+  suggestedDate: string | null // ISO date string - best target date at current pace
   likelihood: 'on_track' | 'at_risk' | 'behind'
   percentageChance: number | null // 0-99 when deadline set, null otherwise
   startPercentageChance: number | null // chance at goal start (when enough data)
   chanceChangeFromStart: number | null // current minus start (percentage points)
+  chanceTrendPoints: Array<{ date: string; chance: number }>
   requiredMonthlyGrowth: number | null
 }
 
@@ -211,7 +212,8 @@ export function calculateMilestoneInfo(
   avgMonthlyGrowth: number,
   deadline: string | null,
   startNetWorth?: number | null,
-  goalCreatedAt?: string | null
+  goalCreatedAt?: string | null,
+  snapshots?: { snapshot_date: string; net_worth: number }[]
 ): MilestoneInfo {
   const remaining = targetAmount - currentNetWorth
   const arrival = projectArrivalDate(currentNetWorth, targetAmount, avgMonthlyGrowth)
@@ -232,7 +234,18 @@ export function calculateMilestoneInfo(
   let likelihood: 'on_track' | 'at_risk' | 'behind'
   let percentageChance: number | null = null
   let startPercentageChance: number | null = null
+  let chanceTrendPoints: Array<{ date: string; chance: number }> = []
   const chanceFromRatio = (ratio: number): number => Math.min(99, Math.max(0, Math.round(ratio * 85)))
+  const chanceAtDate = (netWorthAtDate: number, asOfDate: Date, deadlineDate: Date): number => {
+    const remainingAtDate = targetAmount - netWorthAtDate
+    if (remainingAtDate <= 0) return 99
+    const monthsRemainingAtDate = (deadlineDate.getTime() - asOfDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+    if (monthsRemainingAtDate <= 0) return 0
+    const requiredAtDate = remainingAtDate / monthsRemainingAtDate
+    if (requiredAtDate <= 0) return 99
+    if (avgMonthlyGrowth <= 0) return 0
+    return chanceFromRatio(avgMonthlyGrowth / requiredAtDate)
+  }
 
   if (remaining <= 0) {
     likelihood = 'on_track'
@@ -289,6 +302,39 @@ export function calculateMilestoneInfo(
         const requiredAtStart = startRemaining / monthsAtStart
         startPercentageChance = requiredAtStart > 0 ? chanceFromRatio(avgMonthlyGrowth / requiredAtStart) : 99
       }
+
+      chanceTrendPoints = [{
+        date: goalCreatedAt,
+        chance: startPercentageChance,
+      }]
+
+      const snapshotPoints = (snapshots || [])
+        .filter((s) => {
+          const d = new Date(s.snapshot_date)
+          return !isNaN(d.getTime()) && d >= createdDate && d <= new Date()
+        })
+        .map((s) => ({
+          date: s.snapshot_date,
+          chance: chanceAtDate(Number(s.net_worth), new Date(s.snapshot_date), deadlineDate),
+        }))
+
+      chanceTrendPoints.push(...snapshotPoints)
+
+      if (percentageChance !== null) {
+        chanceTrendPoints.push({
+          date: new Date().toISOString().split('T')[0],
+          chance: percentageChance,
+        })
+      }
+
+      const deduped = new Map<string, number>()
+      for (const point of chanceTrendPoints) {
+        deduped.set(point.date, point.chance)
+      }
+      chanceTrendPoints = Array.from(deduped.entries())
+        .map(([date, chance]) => ({ date, chance }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(-24)
     }
   }
 
@@ -305,6 +351,7 @@ export function calculateMilestoneInfo(
     percentageChance,
     startPercentageChance,
     chanceChangeFromStart,
+    chanceTrendPoints,
     requiredMonthlyGrowth,
   }
 }
@@ -335,3 +382,4 @@ export function generateProjectionData(
 
   return points
 }
+

@@ -93,7 +93,7 @@ export default async function GoalPage({ params }: GoalPageProps) {
   if (goal.goal_type === 'net_worth_milestone') {
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01'
 
-    const [{ data: accounts }, { data: incomeEntries }, { data: milestoneBudgets }, { data: milestoneBills }] = await Promise.all([
+    const [{ data: accounts }, { data: incomeEntries }, { data: milestoneBudgets }, { data: milestoneBills }, { data: snapshots }] = await Promise.all([
       supabase
         .from('accounts')
         .select('id, balance, is_asset')
@@ -115,6 +115,11 @@ export default async function GoalPage({ params }: GoalPageProps) {
         .select('amount, frequency, is_active, is_one_off')
         .eq('user_id', user.id)
         .is('household_id', null),
+      supabase
+        .from('net_worth_snapshots')
+        .select('snapshot_date, net_worth')
+        .eq('user_id', user.id)
+        .order('snapshot_date', { ascending: true }),
     ])
 
     const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
@@ -157,6 +162,7 @@ export default async function GoalPage({ params }: GoalPageProps) {
       goal.deadline,
       Number(goal.starting_amount),
       goal.created_at,
+      snapshots || [],
     )
   }
 

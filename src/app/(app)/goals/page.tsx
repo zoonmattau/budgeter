@@ -13,7 +13,7 @@ export default async function GoalsPage() {
 
   const currentMonth = new Date().toISOString().slice(0, 7) + '-01'
 
-  const [{ data: goals }, { data: accounts }, { data: incomeEntries }, { data: budgets }, { data: bills }] = await Promise.all([
+  const [{ data: goals }, { data: accounts }, { data: incomeEntries }, { data: budgets }, { data: bills }, { data: snapshots }] = await Promise.all([
     supabase
       .from('goals')
       .select('*')
@@ -41,6 +41,11 @@ export default async function GoalsPage() {
       .select('amount, frequency, is_active, is_one_off')
       .eq('user_id', user.id)
       .is('household_id', null),
+    supabase
+      .from('net_worth_snapshots')
+      .select('snapshot_date, net_worth')
+      .eq('user_id', user.id)
+      .order('snapshot_date', { ascending: true }),
   ])
 
   // Compute net worth
@@ -101,6 +106,7 @@ export default async function GoalsPage() {
         goal.deadline,
         Number(goal.starting_amount),
         goal.created_at,
+        snapshots || [],
       )
     }
   }

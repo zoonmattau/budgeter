@@ -55,6 +55,16 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
     ? ((Number(currentAmount) - startVal) / (Number(goal.target_amount) - startVal)) * 100
     : (Number(currentAmount) >= Number(goal.target_amount) ? 100 : 0)
   const isCompleted = goal.status === 'completed' || (isDebtPayoff && (debtMetrics?.remainingDebt || 0) <= 0.01)
+  const chanceTrendPoints = milestoneInfo?.chanceTrendPoints || []
+  const chanceSparklinePoints = chanceTrendPoints.length > 1
+    ? chanceTrendPoints
+      .map((point, index) => {
+        const x = (index / (chanceTrendPoints.length - 1)) * 100
+        const y = 40 - ((point.chance / 99) * 40)
+        return `${x},${Math.max(0, Math.min(40, y))}`
+      })
+      .join(' ')
+    : null
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -296,6 +306,21 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
                     {milestoneInfo.chanceChangeFromStart > 0 ? '+' : ''}
                     {Math.round(milestoneInfo.chanceChangeFromStart)} percentage points from start
                   </p>
+                )}
+                {chanceSparklinePoints && (
+                  <div className="mt-2">
+                    <svg viewBox="0 0 100 40" className="w-full h-10">
+                      <polyline
+                        fill="none"
+                        stroke={milestoneInfo.chanceChangeFromStart !== null && milestoneInfo.chanceChangeFromStart < 0 ? '#ef4444' : '#22c55e'}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points={chanceSparklinePoints}
+                      />
+                    </svg>
+                    <p className="text-[11px] text-gray-500">Chance trend from goal start to now</p>
+                  </div>
                 )}
               </div>
             )}
