@@ -390,7 +390,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // Calculate net worth
   const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
-  const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+  const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Math.abs(Number(a.balance) || 0), 0) || 0
   const netWorth = totalAssets - totalLiabilities
 
   // Get credit cards for expense linking

@@ -84,7 +84,7 @@ export default async function NetWorthPage() {
   const liabilities = accounts?.filter(a => !a.is_asset) || []
 
   const totalAssets = assets.reduce((sum, a) => sum + Number(a.balance), 0)
-  const totalLiabilities = liabilities.reduce((sum, a) => sum + Number(a.balance), 0)
+  const totalLiabilities = liabilities.reduce((sum, a) => sum + Math.abs(Number(a.balance) || 0), 0)
   const netWorth = totalAssets - totalLiabilities
 
   // Calculations for momentum, projections, milestones

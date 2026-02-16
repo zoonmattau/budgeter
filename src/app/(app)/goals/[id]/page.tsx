@@ -117,7 +117,7 @@ export default async function GoalPage({ params }: GoalPageProps) {
     ])
 
     const totalAssets = accounts?.filter(a => a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
-    const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Number(a.balance), 0) || 0
+    const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Math.abs(Number(a.balance) || 0), 0) || 0
     const netWorth = totalAssets - totalLiabilities
 
     const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
