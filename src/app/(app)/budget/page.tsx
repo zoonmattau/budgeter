@@ -306,6 +306,9 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
   const effectiveHouseholdContributions = householdId
     ? committedHouseholdContributions
     : totalHouseholdContributions
+  const effectiveHouseholdIncome = scope === 'household'
+    ? (incomeEntries || []).reduce((sum, entry) => sum + Number(entry.amount), 0)
+    : effectiveHouseholdContributions
 
   return (
     <div className="space-y-6">
@@ -331,7 +334,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
         householdId={householdId}
         members={members}
         currentUserId={user.id}
-        householdContributions={effectiveHouseholdContributions}
+        householdContributions={effectiveHouseholdIncome}
         memberContributions={memberContributions}
         userMonthlyContribution={userMonthlyContribution}
         committedMonthlyContribution={committedMonthlyContribution}

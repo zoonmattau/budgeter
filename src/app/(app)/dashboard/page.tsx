@@ -70,7 +70,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // Fetch household members if in household view
   let members: HouseholdMember[] = []
-  let householdContributions: { id: string; source: string; amount: number; is_recurring: boolean; pay_frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'; pay_day: number; next_pay_date: string }[] = []
   if (scope === 'household' && householdId) {
     const { data: householdMembers } = await supabase
       .from('household_members')
@@ -93,24 +92,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         role: m.role as 'owner' | 'member',
       }
     })
-
-    // Build contribution schedule for household cashflow
-    householdContributions = (householdMembers || [])
-      .filter(m => m.contribution_amount && Number(m.contribution_amount) > 0)
-      .map(m => {
-        const profile = m.profiles as unknown as { display_name: string | null } | null
-        const name = profile?.display_name || 'Member'
-        const freq = (m.contribution_frequency || 'monthly') as 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly'
-        return {
-          id: `contrib-${m.user_id}`,
-          source: `${name}'s contribution`,
-          amount: Number(m.contribution_amount),
-          is_recurring: true,
-          pay_frequency: freq,
-          pay_day: 1,
-          next_pay_date: getNextContributionDate(freq),
-        }
-      })
   }
 
   // Fetch dashboard data in parallel - scope-aware queries
@@ -677,7 +658,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       {/* Cash Flow Preview */}
       <CashflowPreview
         accounts={accounts || []}
-        incomeEntries={scope === 'household' ? householdContributions : (recurringIncome || [])}
+        incomeEntries={recurringIncome || []}
         bills={allBills || []}
         transactions={scope === 'household' ? [] : typedTransactions.map(t => ({
           id: t.id,
@@ -773,30 +754,4 @@ function getGreeting() {
   if (hour < 12) return 'Good morning'
   if (hour < 17) return 'Good afternoon'
   return 'Good evening'
-}
-
-function getNextContributionDate(frequency: string): string {
-  const today = new Date()
-  const next = new Date(today)
-  // Default to next 1st of the month as a starting anchor
-  next.setDate(1)
-  if (next <= today) {
-    switch (frequency) {
-      case 'weekly':
-        next.setDate(today.getDate() + (7 - today.getDay()))
-        break
-      case 'fortnightly':
-        next.setDate(today.getDate() + 14 - (today.getDate() % 14))
-        break
-      case 'quarterly':
-        next.setMonth(next.getMonth() + 3)
-        break
-      case 'yearly':
-        next.setFullYear(next.getFullYear() + 1)
-        break
-      default: // monthly
-        next.setMonth(next.getMonth() + 1)
-    }
-  }
-  return format(next, 'yyyy-MM-dd')
 }

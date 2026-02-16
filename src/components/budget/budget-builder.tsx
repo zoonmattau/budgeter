@@ -10,7 +10,7 @@ import { IncomeEditor } from '@/components/budget/income-editor'
 import { BudgetWizard } from '@/components/budget/budget-wizard'
 import { MemberBreakdownInline } from '@/components/ui/member-breakdown'
 import { createClient } from '@/lib/supabase/client'
-import { format, differenceInDays, addWeeks, addMonths } from 'date-fns'
+import { format, differenceInDays, addWeeks, addMonths, endOfMonth, parseISO } from 'date-fns'
 import type { Tables } from '@/lib/database.types'
 import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
@@ -242,6 +242,8 @@ export function BudgetBuilder({
 
       const monthLabel = currentMonth
       const today = format(new Date(), 'yyyy-MM-dd')
+      const monthStart = currentMonth
+      const monthEnd = format(endOfMonth(parseISO(currentMonth)), 'yyyy-MM-dd')
       const commitDescription = `Household contribution (${monthLabel})`
 
       // Find or create a dedicated expense category
@@ -311,7 +313,10 @@ export function BudgetBuilder({
           .eq('household_id', householdId)
           .eq('type', 'transfer')
           .eq('description', commitDescription)
-          .eq('date', today)
+          .gte('date', monthStart)
+          .lte('date', monthEnd)
+          .order('date', { ascending: false })
+          .limit(1)
           .maybeSingle()
 
         if (existingTransfer) {
