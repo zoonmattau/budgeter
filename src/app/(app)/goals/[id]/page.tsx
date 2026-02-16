@@ -16,15 +16,16 @@ export default async function GoalPage({ params }: GoalPageProps) {
   if (!user) return null
 
   // Fetch goal - also allow household goals
-  const { data: goal } = await supabase
+  const { data: goalData } = await supabase
     .from('goals')
     .select('*')
     .eq('id', id)
     .single()
 
-  if (!goal) {
+  if (!goalData) {
     notFound()
   }
+  let goal = goalData
 
   // Check access: user owns goal OR goal is in user's household
   const isOwner = goal.user_id === user.id
@@ -127,9 +128,31 @@ export default async function GoalPage({ params }: GoalPageProps) {
       .reduce((sum, b) => sum + Number(b.amount) / (b.frequency === 'yearly' ? 12 : 3), 0)
     const avgMonthlyGrowth = Math.max(0, totalIncome - categoryAllocated - monthlySinkingFunds)
 
+    const targetAmount = Number(goal.target_amount) || 0
+    const shouldBeCompleted = netWorth >= targetAmount
+    const desiredStatus = shouldBeCompleted ? 'completed' : 'active'
+    const desiredCurrentAmount = shouldBeCompleted ? targetAmount : netWorth
+
+    if (goal.status !== desiredStatus || Math.abs(Number(goal.current_amount) - desiredCurrentAmount) > 0.01) {
+      await supabase
+        .from('goals')
+        .update({
+          status: desiredStatus,
+          current_amount: desiredCurrentAmount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', goal.id)
+
+      goal = {
+        ...goal,
+        status: desiredStatus,
+        current_amount: desiredCurrentAmount,
+      }
+    }
+
     milestoneInfo = calculateMilestoneInfo(
       netWorth,
-      Number(goal.target_amount),
+      targetAmount,
       avgMonthlyGrowth,
       goal.deadline,
     )

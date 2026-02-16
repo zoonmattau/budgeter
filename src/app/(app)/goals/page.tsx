@@ -56,9 +56,43 @@ export default async function GoalsPage() {
     .reduce((sum, b) => sum + Number(b.amount) / (b.frequency === 'yearly' ? 12 : 3), 0)
   const avgMonthlyGrowth = Math.max(0, totalIncome - categoryAllocated - monthlySinkingFunds)
 
+  // Normalize milestone goals against live net worth so stale rows don't show incorrect progress.
+  const normalizedGoals = (goals || []).map((goal) => {
+    if (goal.goal_type !== 'net_worth_milestone') return goal
+    const targetAmount = Number(goal.target_amount) || 0
+    const shouldBeCompleted = netWorth >= targetAmount
+    return {
+      ...goal,
+      status: shouldBeCompleted ? 'completed' : 'active',
+      current_amount: shouldBeCompleted ? targetAmount : netWorth,
+    }
+  })
+
+  // Persist normalization so all screens stay in sync.
+  const milestoneSyncUpdates = normalizedGoals
+    .filter(g => {
+      const original = (goals || []).find(x => x.id === g.id)
+      if (!original || g.goal_type !== 'net_worth_milestone') return false
+      return original.status !== g.status || Math.abs(Number(original.current_amount) - Number(g.current_amount)) > 0.01
+    })
+    .map(g =>
+      supabase
+        .from('goals')
+        .update({
+          status: g.status,
+          current_amount: g.current_amount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', g.id)
+    )
+
+  if (milestoneSyncUpdates.length > 0) {
+    await Promise.all(milestoneSyncUpdates)
+  }
+
   // Build milestone info map for net_worth_milestone goals
   const milestoneInfoMap: Record<string, MilestoneInfo> = {}
-  for (const goal of (goals || [])) {
+  for (const goal of normalizedGoals) {
     if (goal.goal_type === 'net_worth_milestone') {
       milestoneInfoMap[goal.id] = calculateMilestoneInfo(
         netWorth,
@@ -69,8 +103,8 @@ export default async function GoalsPage() {
     }
   }
 
-  const activeGoals = goals?.filter(g => g.status === 'active') || []
-  const completedGoals = goals?.filter(g => g.status === 'completed') || []
+  const activeGoals = normalizedGoals.filter(g => g.status === 'active')
+  const completedGoals = normalizedGoals.filter(g => g.status === 'completed')
 
   return (
     <div className="space-y-6">
