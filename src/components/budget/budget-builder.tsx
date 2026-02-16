@@ -84,6 +84,7 @@ interface BudgetBuilderProps {
   householdContributions?: number
   memberContributions?: MemberContribution[]
   userMonthlyContribution?: number
+  committedMonthlyContribution?: number
   bills?: Bill[]
   transactionsByCategory?: Record<string, Transaction[]>
   debtAccounts?: DebtAccount[]
@@ -108,13 +109,14 @@ export function BudgetBuilder({
   householdContributions = 0,
   memberContributions = [],
   userMonthlyContribution = 0,
+  committedMonthlyContribution = 0,
   bills = [],
   transactionsByCategory = {},
   debtAccounts = [],
   userContribution = 0,
   userContributionFrequency = 'monthly',
   savingsGoals = [],
-  bankAccounts: _bankAccounts = [],
+  bankAccounts = [],
   savedExtraDebtPayment = 0,
 }: BudgetBuilderProps) {
   const router = useRouter()
@@ -191,6 +193,7 @@ export function BudgetBuilder({
   const [contributionAmount, setContributionAmount] = useState(userContribution)
   const [contributionFreq, setContributionFreq] = useState(userContributionFrequency)
   const [savingContribution, setSavingContribution] = useState(false)
+  const [committingContribution, setCommittingContribution] = useState(false)
   const [localCategories, setLocalCategories] = useState(budgetCategories)
   const [showCreateCategory, setShowCreateCategory] = useState(false)
   const [reorderMode, setReorderMode] = useState(false)
@@ -198,7 +201,7 @@ export function BudgetBuilder({
   const [confirmingReset, setConfirmingReset] = useState(false)
 
   const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + a, 0)
-  const householdContributionCost = !isHousehold && householdId ? userMonthlyContribution : 0
+  const householdContributionCost = !isHousehold && householdId ? committedMonthlyContribution : 0
   const totalFixedCosts = monthlySinkingFunds + monthlyDebtPayments + extraDebtPayment + householdContributionCost
   const totalCommitted = totalAllocated + totalFixedCosts
   const unallocated = totalIncome - totalCommitted
@@ -227,6 +230,170 @@ export function BudgetBuilder({
       updated[newIndex] = temp
       return updated
     })
+  }
+
+  async function handleCommitContribution() {
+    if (!householdId || userMonthlyContribution <= 0) return
+    setCommittingContribution(true)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const monthLabel = currentMonth
+      const today = format(new Date(), 'yyyy-MM-dd')
+      const commitDescription = `Household contribution (${monthLabel})`
+
+      // Find or create a dedicated expense category
+      let contributionCategoryId =
+        localCategories.find(c => {
+          const n = c.name.toLowerCase()
+          return n.includes('household') && n.includes('contribution')
+        })?.id || null
+
+      if (!contributionCategoryId) {
+        const { data: existingCategory } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('type', 'expense')
+          .eq('name', 'Household Contribution')
+          .maybeSingle()
+
+        contributionCategoryId = existingCategory?.id || null
+      }
+
+      if (!contributionCategoryId) {
+        const { data: createdCategory, error: createCategoryError } = await supabase
+          .from('categories')
+          .insert({
+            user_id: user.id,
+            name: 'Household Contribution',
+            type: 'expense',
+            icon: 'home',
+            color: '#8b5cf6',
+          })
+          .select('id')
+          .single()
+
+        if (createCategoryError || !createdCategory) {
+          console.error('Failed to create contribution category:', createCategoryError)
+          return
+        }
+        contributionCategoryId = createdCategory.id
+      }
+
+      const selectedAccount = [...bankAccounts]
+        .sort((a, b) => Number(b.balance) - Number(a.balance))[0]
+      const selectedAccountId = selectedAccount?.id || null
+
+      // Create or update personal expense transaction for this month's commit
+      const { data: existingTx } = await supabase
+        .from('transactions')
+        .select('id, amount, account_id')
+        .eq('user_id', user.id)
+        .is('household_id', null)
+        .eq('type', 'expense')
+        .eq('description', commitDescription)
+        .eq('date', today)
+        .maybeSingle()
+
+      if (existingTx) {
+        const delta = userMonthlyContribution - Number(existingTx.amount)
+        const accountToAdjustId = existingTx.account_id || selectedAccountId
+
+        const { error: txUpdateError } = await supabase
+          .from('transactions')
+          .update({
+            category_id: contributionCategoryId,
+            amount: userMonthlyContribution,
+            account_id: accountToAdjustId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingTx.id)
+
+        if (txUpdateError) {
+          console.error('Failed to update contribution transaction:', txUpdateError)
+          return
+        }
+
+        if (accountToAdjustId && Math.abs(delta) > 0.01) {
+          const account = bankAccounts.find(a => a.id === accountToAdjustId)
+          if (account) {
+            await supabase
+              .from('accounts')
+              .update({
+                balance: Number(account.balance) - delta,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', accountToAdjustId)
+          }
+        }
+      } else {
+        const { error: txInsertError } = await supabase
+          .from('transactions')
+          .insert({
+            user_id: user.id,
+            household_id: null,
+            category_id: contributionCategoryId,
+            amount: userMonthlyContribution,
+            type: 'expense',
+            description: commitDescription,
+            date: today,
+            account_id: selectedAccountId,
+            is_recurring: false,
+          })
+
+        if (txInsertError) {
+          console.error('Failed to create contribution transaction:', txInsertError)
+          return
+        }
+
+        if (selectedAccountId && selectedAccount) {
+          await supabase
+            .from('accounts')
+            .update({
+              balance: Number(selectedAccount.balance) - userMonthlyContribution,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', selectedAccountId)
+        }
+      }
+
+      // Record contribution for household budget month
+      const commitSource = `Contribution:${user.id}`
+      const { data: existingContribution } = await supabase
+        .from('income_entries')
+        .select('id')
+        .eq('household_id', householdId)
+        .eq('month', currentMonth)
+        .eq('source', commitSource)
+        .maybeSingle()
+
+      if (existingContribution) {
+        await supabase
+          .from('income_entries')
+          .update({
+            amount: userMonthlyContribution,
+          })
+          .eq('id', existingContribution.id)
+      } else {
+        await supabase
+          .from('income_entries')
+          .insert({
+            user_id: user.id,
+            household_id: householdId,
+            month: currentMonth,
+            source: commitSource,
+            amount: userMonthlyContribution,
+            is_recurring: false,
+          })
+      }
+
+      router.refresh()
+    } finally {
+      setCommittingContribution(false)
+    }
   }
 
   async function handleSaveOrder() {
@@ -723,6 +890,11 @@ export function BudgetBuilder({
                   {formatCurrency(userMonthlyContribution)}
                   <span className="text-sm font-normal text-gray-500">/month</span>
                 </p>
+                <p className={`text-xs mt-0.5 ${committedMonthlyContribution > 0 ? 'text-sprout-600' : 'text-amber-600'}`}>
+                  {committedMonthlyContribution > 0
+                    ? `Committed this month: ${formatCurrency(committedMonthlyContribution)}`
+                    : 'Not committed this month'}
+                </p>
                 {userContributionFrequency !== 'monthly' && userContribution > 0 && (
                   <p className="text-xs text-gray-500">
                     ({formatCurrency(userContribution)} {userContributionFrequency === 'weekly' ? 'weekly' : 'fortnightly'})
@@ -732,7 +904,7 @@ export function BudgetBuilder({
               {userMonthlyContribution > 0 && (
                 <div className="flex items-center gap-1 text-xs text-sprout-600">
                   <Check className="w-3 h-3" />
-                  <span>Included in budget</span>
+                  <span>{committedMonthlyContribution > 0 ? 'Committed' : 'Ready to commit'}</span>
                 </div>
               )}
             </div>
@@ -742,6 +914,19 @@ export function BudgetBuilder({
             <p className="text-xs text-amber-600 mt-2">
               Set your contribution to track household expenses in your budget.
             </p>
+          )}
+          {userMonthlyContribution > 0 && !editingContribution && (
+            <button
+              onClick={handleCommitContribution}
+              disabled={committingContribution}
+              className="mt-3 w-full btn-primary text-sm"
+            >
+              {committingContribution
+                ? 'Committing...'
+                : committedMonthlyContribution > 0
+                  ? 'Update This Month\'s Commitment'
+                  : 'Commit This Month'}
+            </button>
           )}
 
           {/* Link to household budget */}

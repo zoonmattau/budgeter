@@ -83,6 +83,8 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
     { data: categories },
     { data: budgets },
     { data: incomeEntries },
+    { data: householdContributionEntries },
+    { data: userContributionCommit },
     { data: transactions },
     { data: bills },
     { data: debtAccounts },
@@ -120,6 +122,23 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .eq('user_id', user.id)
           .eq('month', currentMonth)
           .is('household_id', null),
+    householdId
+      ? supabase
+          .from('income_entries')
+          .select('id, user_id, amount, source, month, household_id')
+          .eq('household_id', householdId)
+          .eq('month', currentMonth)
+          .like('source', 'Contribution:%')
+      : Promise.resolve({ data: [] as { id: string; user_id: string; amount: number; source: string; month: string; household_id: string | null }[] }),
+    householdId
+      ? supabase
+          .from('income_entries')
+          .select('id, amount')
+          .eq('household_id', householdId)
+          .eq('month', currentMonth)
+          .eq('source', `Contribution:${user.id}`)
+          .maybeSingle()
+      : Promise.resolve({ data: null as { id: string; amount: number } | null }),
     scope === 'household' && householdId
       ? supabase
           .from('transactions')
@@ -281,6 +300,12 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
 
   // Calculate user's monthly contribution for personal budget
   const userMonthlyContribution = userContribution * (frequencyMultiplier[userContributionFrequency] || 1)
+  const committedMonthlyContribution = Number(userContributionCommit?.amount) || 0
+  const committedHouseholdContributions = (householdContributionEntries || [])
+    .reduce((sum, entry) => sum + Number(entry.amount), 0)
+  const effectiveHouseholdContributions = householdId
+    ? committedHouseholdContributions
+    : totalHouseholdContributions
 
   return (
     <div className="space-y-6">
@@ -306,9 +331,10 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
         householdId={householdId}
         members={members}
         currentUserId={user.id}
-        householdContributions={totalHouseholdContributions}
+        householdContributions={effectiveHouseholdContributions}
         memberContributions={memberContributions}
         userMonthlyContribution={userMonthlyContribution}
+        committedMonthlyContribution={committedMonthlyContribution}
         bills={bills || []}
         transactionsByCategory={transactionsByCategory}
         debtAccounts={debtAccounts || []}

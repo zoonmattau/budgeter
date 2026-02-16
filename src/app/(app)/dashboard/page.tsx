@@ -12,6 +12,7 @@ import { CreditLimitWarning } from '@/components/dashboard/credit-limit-warning'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { CashflowPreview } from '@/components/dashboard/cashflow-preview'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
+import { formatCurrency } from '@/lib/utils'
 import { format, startOfMonth, subMonths, addDays, subDays } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
@@ -56,12 +57,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const scope: ViewScope = params.scope === 'household' && isInHousehold ? 'household' : 'personal'
 
   // Calculate user's monthly household contribution
-  const frequencyMultiplierMap: Record<string, number> = {
-    weekly: 4.33, fortnightly: 2.17, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12,
-  }
-  const userContributionAmount = membership?.contribution_amount ? Number(membership.contribution_amount) : 0
-  const userContributionFreq = membership?.contribution_frequency || 'monthly'
-  const userMonthlyContribution = userContributionAmount * (frequencyMultiplierMap[userContributionFreq] || 1)
+  const { data: userContributionCommit } = householdId
+    ? await supabase
+        .from('income_entries')
+        .select('amount')
+        .eq('household_id', householdId)
+        .eq('month', currentMonth)
+        .eq('source', `Contribution:${user.id}`)
+        .maybeSingle()
+    : { data: null }
+  const userCommittedMonthlyContribution = Number(userContributionCommit?.amount) || 0
 
   // Fetch household members if in household view
   let members: HouseholdMember[] = []
@@ -360,7 +365,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     .reduce((sum, b) => sum + Number(b.amount) / (b.frequency === 'yearly' ? 12 : 3), 0)
   const extraDebtPayment = Number(budgetSettings?.extra_debt_payment) || 0
 
-  const householdContributionCost = scope === 'personal' && householdId ? userMonthlyContribution : 0
+  const householdContributionCost = scope === 'personal' && householdId ? userCommittedMonthlyContribution : 0
   const totalAllocated = categoryAllocated + monthlyDebtPayments + monthlySinkingFunds + extraDebtPayment + householdContributionCost
   const totalSpent = transactions
     ?.filter(t => t.type === 'expense')
