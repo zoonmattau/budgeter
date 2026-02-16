@@ -285,6 +285,18 @@ export function GoalEditForm({ goal, linkedAccount, isHouseholdGoal, contributio
                 <p className="text-sm text-gray-600 mt-0.5">
                   chance of hitting by {format(new Date(goal.deadline), 'MMM yyyy')}
                 </p>
+                {milestoneInfo.chanceChangeFromStart !== null && (
+                  <p className={`text-xs mt-1 ${
+                    milestoneInfo.chanceChangeFromStart > 0
+                      ? 'text-sprout-700'
+                      : milestoneInfo.chanceChangeFromStart < 0
+                        ? 'text-red-600'
+                        : 'text-gray-600'
+                  }`}>
+                    {milestoneInfo.chanceChangeFromStart > 0 ? '+' : ''}
+                    {Math.round(milestoneInfo.chanceChangeFromStart)} percentage points from start
+                  </p>
+                )}
               </div>
             )}
 

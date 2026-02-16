@@ -155,6 +155,8 @@ export default async function GoalPage({ params }: GoalPageProps) {
       targetAmount,
       avgMonthlyGrowth,
       goal.deadline,
+      Number(goal.starting_amount),
+      goal.created_at,
     )
   }
 

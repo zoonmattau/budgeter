@@ -196,6 +196,8 @@ export interface MilestoneInfo {
   suggestedDate: string | null // ISO date string — best target date at current pace
   likelihood: 'on_track' | 'at_risk' | 'behind'
   percentageChance: number | null // 0-99 when deadline set, null otherwise
+  startPercentageChance: number | null // chance at goal start (when enough data)
+  chanceChangeFromStart: number | null // current minus start (percentage points)
   requiredMonthlyGrowth: number | null
 }
 
@@ -207,7 +209,9 @@ export function calculateMilestoneInfo(
   currentNetWorth: number,
   targetAmount: number,
   avgMonthlyGrowth: number,
-  deadline: string | null
+  deadline: string | null,
+  startNetWorth?: number | null,
+  goalCreatedAt?: string | null
 ): MilestoneInfo {
   const remaining = targetAmount - currentNetWorth
   const arrival = projectArrivalDate(currentNetWorth, targetAmount, avgMonthlyGrowth)
@@ -227,6 +231,8 @@ export function calculateMilestoneInfo(
   let requiredMonthlyGrowth: number | null = null
   let likelihood: 'on_track' | 'at_risk' | 'behind'
   let percentageChance: number | null = null
+  let startPercentageChance: number | null = null
+  const chanceFromRatio = (ratio: number): number => Math.min(99, Math.max(0, Math.round(ratio * 85)))
 
   if (remaining <= 0) {
     likelihood = 'on_track'
@@ -250,7 +256,7 @@ export function calculateMilestoneInfo(
       } else {
         const ratio = avgMonthlyGrowth / requiredMonthlyGrowth
         // Map ratio to percentage: ratio 1.0 = 85%, ratio 1.2+ = 99%, scales linearly below
-        percentageChance = Math.min(99, Math.max(0, Math.round(ratio * 85)))
+        percentageChance = chanceFromRatio(ratio)
 
         if (ratio >= 0.9) likelihood = 'on_track'
         else if (ratio >= 0.6) likelihood = 'at_risk'
@@ -268,12 +274,37 @@ export function calculateMilestoneInfo(
     }
   }
 
+  if (deadline && startNetWorth !== undefined && startNetWorth !== null && goalCreatedAt) {
+    const deadlineDate = new Date(deadline)
+    const createdDate = new Date(goalCreatedAt)
+    const startRemaining = targetAmount - Number(startNetWorth)
+    const monthsAtStart = (deadlineDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+
+    if (!isNaN(deadlineDate.getTime()) && !isNaN(createdDate.getTime()) && monthsAtStart > 0) {
+      if (startRemaining <= 0) {
+        startPercentageChance = 99
+      } else if (avgMonthlyGrowth <= 0) {
+        startPercentageChance = 0
+      } else {
+        const requiredAtStart = startRemaining / monthsAtStart
+        startPercentageChance = requiredAtStart > 0 ? chanceFromRatio(avgMonthlyGrowth / requiredAtStart) : 99
+      }
+    }
+  }
+
+  const chanceChangeFromStart =
+    percentageChance !== null && startPercentageChance !== null
+      ? percentageChance - startPercentageChance
+      : null
+
   return {
     avgMonthlyGrowth,
     estimatedArrival: arrival ? arrival.toISOString() : null,
     suggestedDate,
     likelihood,
     percentageChance,
+    startPercentageChance,
+    chanceChangeFromStart,
     requiredMonthlyGrowth,
   }
 }

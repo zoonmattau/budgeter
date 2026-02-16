@@ -79,12 +79,26 @@ export function GoalCard({ goal, milestoneInfo }: GoalCardProps) {
                 {isDebtPayoff ? 'Paid Off' : 'Done'}
               </span>
             ) : isNetWorthMilestone && milestoneInfo && milestoneInfo.percentageChance !== null ? (
-              <span className={`text-sm font-bold ${
-                milestoneInfo.percentageChance >= 75 ? 'text-sprout-600' :
-                milestoneInfo.percentageChance >= 40 ? 'text-amber-600' : 'text-red-600'
-              }`}>
-                {milestoneInfo.percentageChance}% chance
-              </span>
+              <div className="text-right">
+                <p className={`text-sm font-bold ${
+                  milestoneInfo.percentageChance >= 75 ? 'text-sprout-600' :
+                  milestoneInfo.percentageChance >= 40 ? 'text-amber-600' : 'text-red-600'
+                }`}>
+                  {milestoneInfo.percentageChance}% chance
+                </p>
+                {milestoneInfo.chanceChangeFromStart !== null && (
+                  <p className={`text-[11px] ${
+                    milestoneInfo.chanceChangeFromStart > 0
+                      ? 'text-sprout-600'
+                      : milestoneInfo.chanceChangeFromStart < 0
+                        ? 'text-red-500'
+                        : 'text-gray-500'
+                  }`}>
+                    {milestoneInfo.chanceChangeFromStart > 0 ? '+' : ''}
+                    {Math.round(milestoneInfo.chanceChangeFromStart)} pts from start
+                  </p>
+                )}
+              </div>
             ) : (
               <LikelihoodBadge likelihood={likelihood} />
             )}

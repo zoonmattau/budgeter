@@ -99,6 +99,8 @@ export default async function GoalsPage() {
         Number(goal.target_amount),
         avgMonthlyGrowth,
         goal.deadline,
+        Number(goal.starting_amount),
+        goal.created_at,
       )
     }
   }
