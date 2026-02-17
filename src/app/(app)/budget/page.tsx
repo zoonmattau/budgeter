@@ -89,7 +89,6 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
     { data: bills },
     { data: debtAccounts },
     { data: savingsGoals },
-    { data: bankAccounts },
     { data: budgetSettings },
   ] = await Promise.all([
     supabase
@@ -192,13 +191,6 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
       .eq('status', 'active')
       .eq('goal_type', 'savings')
       .order('created_at'),
-    // Bank accounts for sinking fund contributions
-    supabase
-      .from('accounts')
-      .select('id, name, type, balance')
-      .eq('user_id', user.id)
-      .is('household_id', null)
-      .in('type', ['bank', 'cash']),
     // Budget settings (extra debt payment, etc.)
     scope === 'household' && householdId
       ? supabase
@@ -344,7 +336,6 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
         userContribution={userContribution}
         userContributionFrequency={userContributionFrequency}
         savingsGoals={savingsGoals || []}
-        bankAccounts={bankAccounts || []}
         savedExtraDebtPayment={Number(budgetSettings?.extra_debt_payment) || 0}
       />
     </div>

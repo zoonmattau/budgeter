@@ -63,13 +63,6 @@ interface SavingsGoal {
   goal_type: string
 }
 
-interface BankAccount {
-  id: string
-  name: string
-  type: string
-  balance: number
-}
-
 interface BudgetBuilderProps {
   categories: Tables<'categories'>[]
   budgets: Tables<'budgets'>[]
@@ -91,7 +84,6 @@ interface BudgetBuilderProps {
   userContribution?: number
   userContributionFrequency?: string
   savingsGoals?: SavingsGoal[]
-  bankAccounts?: BankAccount[]
   savedExtraDebtPayment?: number
 }
 
@@ -116,7 +108,6 @@ export function BudgetBuilder({
   userContribution = 0,
   userContributionFrequency = 'monthly',
   savingsGoals = [],
-  bankAccounts = [],
   savedExtraDebtPayment = 0,
 }: BudgetBuilderProps) {
   const router = useRouter()
@@ -285,132 +276,45 @@ export function BudgetBuilder({
         contributionCategoryId = createdCategory.id
       }
 
-      // If household has a cash/bank account, auto-transfer there now.
-      // If not, keep funds with the user until household expenses are logged.
-      const { data: householdCashAccount } = await supabase
-        .from('accounts')
-        .select('id, balance, type')
-        .eq('household_id', householdId)
-        .in('type', ['bank', 'cash'])
-        .order('balance', { ascending: false })
+      // Record a personal expense transaction so the contribution reduces
+      // "available to spend" in the personal budget without touching any
+      // account balance (money stays in the bank — no phantom transfer).
+      const { data: existingExpense } = await supabase
+        .from('transactions')
+        .select('id, amount')
+        .eq('user_id', user.id)
+        .is('household_id', null)
+        .eq('type', 'expense')
+        .eq('description', commitDescription)
+        .gte('date', monthStart)
+        .lte('date', monthEnd)
+        .order('date', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      if (householdCashAccount) {
-        const sourceAccount = [...bankAccounts]
-          .sort((a, b) => Number(b.balance) - Number(a.balance))[0]
-        const sourceAccountId = sourceAccount?.id || null
-
-        if (!sourceAccountId) {
-          console.error('No personal bank/cash account available to fund household contribution transfer')
-          return
-        }
-
-        const { data: existingTransfer } = await supabase
+      if (existingExpense) {
+        await supabase
           .from('transactions')
-          .select('id, amount, account_id, to_account_id')
-          .eq('user_id', user.id)
-          .eq('household_id', householdId)
-          .eq('type', 'transfer')
-          .eq('description', commitDescription)
-          .gte('date', monthStart)
-          .lte('date', monthEnd)
-          .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (existingTransfer) {
-          const previousAmount = Number(existingTransfer.amount) || 0
-          const delta = userMonthlyContribution - previousAmount
-          const fromAccountId = existingTransfer.account_id || sourceAccountId
-          const toAccountId = existingTransfer.to_account_id || householdCashAccount.id
-
-          const { error: transferUpdateError } = await supabase
-            .from('transactions')
-            .update({
-              category_id: contributionCategoryId,
-              amount: userMonthlyContribution,
-              account_id: sourceAccountId,
-              to_account_id: householdCashAccount.id,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existingTransfer.id)
-
-          if (transferUpdateError) {
-            console.error('Failed to update contribution transfer:', transferUpdateError)
-            return
-          }
-
-          if (Math.abs(delta) > 0.01) {
-            const { data: fromAccount } = await supabase
-              .from('accounts')
-              .select('id, balance')
-              .eq('id', fromAccountId)
-              .maybeSingle()
-
-            if (fromAccount) {
-              await supabase
-                .from('accounts')
-                .update({
-                  balance: Number(fromAccount.balance) - delta,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', fromAccountId)
-            }
-
-            const { data: toAccount } = await supabase
-              .from('accounts')
-              .select('id, balance')
-              .eq('id', toAccountId)
-              .maybeSingle()
-
-            if (toAccount) {
-              await supabase
-                .from('accounts')
-                .update({
-                  balance: Number(toAccount.balance) + delta,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', toAccountId)
-            }
-          }
-        } else {
-          const { error: transferInsertError } = await supabase
-            .from('transactions')
-            .insert({
-              user_id: user.id,
-              household_id: householdId,
-              category_id: contributionCategoryId,
-              amount: userMonthlyContribution,
-              type: 'transfer',
-              description: commitDescription,
-              date: today,
-              account_id: sourceAccountId,
-              to_account_id: householdCashAccount.id,
-              is_recurring: false,
-            })
-
-          if (transferInsertError) {
-            console.error('Failed to create contribution transfer:', transferInsertError)
-            return
-          }
-
-          await supabase
-            .from('accounts')
-            .update({
-              balance: Number(sourceAccount.balance) - userMonthlyContribution,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', sourceAccountId)
-
-          await supabase
-            .from('accounts')
-            .update({
-              balance: Number(householdCashAccount.balance) + userMonthlyContribution,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', householdCashAccount.id)
-        }
+          .update({
+            category_id: contributionCategoryId,
+            amount: userMonthlyContribution,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingExpense.id)
+      } else {
+        await supabase
+          .from('transactions')
+          .insert({
+            user_id: user.id,
+            household_id: null,
+            category_id: contributionCategoryId,
+            amount: userMonthlyContribution,
+            type: 'expense',
+            description: commitDescription,
+            date: today,
+            account_id: null,
+            is_recurring: false,
+          })
       }
 
       // Record contribution for household budget month
