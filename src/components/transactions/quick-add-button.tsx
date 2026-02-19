@@ -54,6 +54,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null)
   const [selectedFromAccountId, setSelectedFromAccountId] = useState<string | null>(null)
   const [selectedToAccountId, setSelectedToAccountId] = useState<string | null>(null)
+  const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [toastAchievements, setToastAchievements] = useState<AchievementType[]>([])
@@ -99,6 +100,7 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
     setSelectedBankAccountId(null)
     setSelectedFromAccountId(null)
     setSelectedToAccountId(null)
+    setNotes('')
     setIsRecurring(false)
     setFrequency('monthly')
     setBillCreated(false)
@@ -251,6 +253,7 @@ async function handleSubmit(e: React.FormEvent) {
         date: date,
         account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : isInvestment ? selectedInvestmentId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
         is_recurring: isRecurring,
+        notes: notes || null,
         ...(isHouseholdScope && { household_id: householdId }),
       })
       error = txnError
@@ -265,6 +268,7 @@ async function handleSubmit(e: React.FormEvent) {
         date: date,
         account_id: (isExpense || isSubscription) && selectedCardId ? selectedCardId : transactionType === 'income' && selectedBankAccountId ? selectedBankAccountId : null,
         is_recurring: false,
+        notes: notes || null,
         ...(isHouseholdScope && { household_id: householdId }),
       })
       error = txnError
@@ -1083,6 +1087,20 @@ async function handleSubmit(e: React.FormEvent) {
               </p>
             )}
           </div>
+
+          {/* Notes (optional) */}
+          {(isExpense || transactionType === 'income') && (
+            <div>
+              <label className="label">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g., reimbursable, split with Sarah..."
+                className="input"
+              />
+            </div>
+          )}
 
           {/* Submit */}
           <button

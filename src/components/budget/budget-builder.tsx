@@ -195,6 +195,7 @@ export function BudgetBuilder({
   const [reorderMode, setReorderMode] = useState(false)
   const [savingOrder, setSavingOrder] = useState(false)
   const [confirmingReset, setConfirmingReset] = useState(false)
+  const [copyingLastMonth, setCopyingLastMonth] = useState(false)
 
   const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + a, 0)
   const householdContributionCost = !isHousehold && householdId ? committedMonthlyContribution : 0
@@ -214,6 +215,34 @@ export function BudgetBuilder({
   function handleReset() {
     setAllocations({})
     setConfirmingReset(false)
+  }
+
+  async function handleCopyLastMonth() {
+    setCopyingLastMonth(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setCopyingLastMonth(false); return }
+
+    const lastMonth = new Date()
+    lastMonth.setMonth(lastMonth.getMonth() - 1)
+    const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`
+
+    let query = isHousehold && householdId
+      ? supabase.from('budgets').select('category_id, allocated, categories(name)').eq('household_id', householdId).eq('month', lastMonthStr).eq('user_id', user.id)
+      : supabase.from('budgets').select('category_id, allocated, categories(name)').eq('user_id', user.id).eq('month', lastMonthStr).is('household_id', null)
+
+    const { data: lastMonthBudgets } = await query
+
+    if (lastMonthBudgets && lastMonthBudgets.length > 0) {
+      const newAllocs = { ...allocations }
+      for (const b of lastMonthBudgets) {
+        // Match by category ID directly (same user's categories)
+        if (categories.find(c => c.id === b.category_id)) {
+          newAllocs[b.category_id] = Number(b.allocated)
+        }
+      }
+      setAllocations(newAllocs)
+    }
+    setCopyingLastMonth(false)
   }
 
   function handleMoveCategory(index: number, direction: 'up' | 'down') {
@@ -1172,6 +1201,11 @@ export function BudgetBuilder({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-gray-900">{category.name}</p>
+                    {allocated > 0 && progress >= 80 && !isOver && (
+                      <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">
+                        {Math.round(progress)}%
+                      </span>
+                    )}
                     {rentStatus && (
                       <span className={`text-xs font-medium ${rentStatus.color}`}>
                         {rentStatus.text}
@@ -1765,6 +1799,18 @@ export function BudgetBuilder({
       >
         {saving ? 'Saving...' : unallocated < 0 ? 'Save Anyway' : 'Save Budget'}
       </button>
+
+      {/* Copy last month's budget */}
+      {Object.values(allocations).every(a => a === 0) && (
+        <button
+          onClick={handleCopyLastMonth}
+          disabled={copyingLastMonth}
+          className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-bloom-600 hover:text-bloom-700 transition-colors disabled:opacity-50"
+        >
+          <RotateCcw className="w-3 h-3" />
+          {copyingLastMonth ? 'Copying...' : 'Copy last month\'s budget'}
+        </button>
+      )}
 
       {/* Reset Budget - tucked away to prevent accidental use */}
       {Object.values(allocations).some(a => a > 0) && (

@@ -1,6 +1,133 @@
 import Link from 'next/link'
 import { getLevel } from '@/lib/gamification'
 
+// Colour constants matching the app palette
+const S = '#16a34a'   // sprout-600 — dark green
+const SL = '#4ade80'  // sprout-400 — light green
+const B = '#d946ef'   // bloom-500  — purple/pink
+const BL = '#f0abfc'  // bloom-300  — light pink
+const POT = '#b45309' // amber-700
+const POT_RIM = '#92400e' // amber-800
+const SOIL = '#78350f'    // amber-900
+
+/** SVG plant that grows through 7 visual stages (level 0–6) */
+function PlantSVG({ level }: { level: number }) {
+  const stemTop = [91, 78, 65, 75, 75, 75, 75][level]
+  const stemWidth = level >= 5 ? 5 : level >= 3 ? 3.5 : 2
+
+  return (
+    <svg viewBox="0 0 100 130" className="w-full h-full" style={{ overflow: 'visible' }}>
+      {/* Outer glow for max level */}
+      {level >= 6 && (
+        <ellipse cx="50" cy="48" rx="36" ry="30" fill={B} opacity="0.08" />
+      )}
+
+      {/* Stem / trunk */}
+      <line
+        x1="50" y1="106" x2="50" y2={stemTop}
+        stroke={S} strokeWidth={stemWidth} strokeLinecap="round"
+      />
+
+      {/* ── Level 0 — Seedling: tiny stem + 2 micro leaves ── */}
+      {level === 0 && (
+        <>
+          <ellipse cx="43" cy="89" rx="7" ry="3" fill={SL} transform="rotate(-35 43 89)" />
+          <ellipse cx="57" cy="89" rx="7" ry="3" fill={SL} transform="rotate(35 57 89)" />
+        </>
+      )}
+
+      {/* ── Level 1 — Sapling: taller + 2 pairs of leaves ── */}
+      {level === 1 && (
+        <>
+          <ellipse cx="41" cy="84" rx="9" ry="4" fill={S} transform="rotate(-25 41 84)" />
+          <ellipse cx="59" cy="84" rx="9" ry="4" fill={S} transform="rotate(25 59 84)" />
+          <ellipse cx="44" cy="75" rx="7" ry="3.5" fill={SL} transform="rotate(-30 44 75)" />
+          <ellipse cx="56" cy="75" rx="7" ry="3.5" fill={SL} transform="rotate(30 56 75)" />
+        </>
+      )}
+
+      {/* ── Level 2 — Sprout: 3 pairs + rounded top ── */}
+      {level === 2 && (
+        <>
+          <ellipse cx="39" cy="77" rx="11" ry="5" fill={S} transform="rotate(-20 39 77)" />
+          <ellipse cx="61" cy="77" rx="11" ry="5" fill={S} transform="rotate(20 61 77)" />
+          <ellipse cx="41" cy="68" rx="9" ry="4" fill={SL} transform="rotate(-25 41 68)" />
+          <ellipse cx="59" cy="68" rx="9" ry="4" fill={SL} transform="rotate(25 59 68)" />
+          <ellipse cx="50" cy="63" rx="11" ry="9" fill={SL} />
+        </>
+      )}
+
+      {/* ── Level 3 — Budgeter: bushy canopy ── */}
+      {level === 3 && (
+        <>
+          <ellipse cx="50" cy="68" rx="21" ry="16" fill={S} />
+          <ellipse cx="50" cy="62" rx="14" ry="10" fill={SL} />
+          <ellipse cx="37" cy="71" rx="10" ry="8" fill={SL} />
+          <ellipse cx="63" cy="71" rx="10" ry="8" fill={SL} />
+        </>
+      )}
+
+      {/* ── Level 4 — Bloom: canopy + flowers ── */}
+      {level === 4 && (
+        <>
+          <ellipse cx="50" cy="65" rx="23" ry="17" fill={S} />
+          <ellipse cx="50" cy="58" rx="15" ry="11" fill={SL} />
+          <ellipse cx="37" cy="69" rx="11" ry="9" fill={SL} />
+          <ellipse cx="63" cy="69" rx="11" ry="9" fill={SL} />
+          {/* Flowers */}
+          <circle cx="41" cy="60" r="4.5" fill={BL} /><circle cx="41" cy="60" r="2.5" fill={B} />
+          <circle cx="59" cy="57" r="4.5" fill={BL} /><circle cx="59" cy="57" r="2.5" fill={B} />
+          <circle cx="50" cy="68" r="4.5" fill={BL} /><circle cx="50" cy="68" r="2.5" fill={B} />
+          <circle cx="34" cy="68" r="3.5" fill={BL} /><circle cx="34" cy="68" r="1.8" fill={B} />
+        </>
+      )}
+
+      {/* ── Level 5 — Flourishing: full tree + many flowers ── */}
+      {level === 5 && (
+        <>
+          <ellipse cx="50" cy="58" rx="27" ry="21" fill={S} />
+          <ellipse cx="50" cy="50" rx="20" ry="14" fill={SL} />
+          <ellipse cx="33" cy="64" rx="14" ry="10" fill={S} />
+          <ellipse cx="67" cy="64" rx="14" ry="10" fill={S} />
+          <ellipse cx="33" cy="64" rx="9" ry="7" fill={SL} />
+          <ellipse cx="67" cy="64" rx="9" ry="7" fill={SL} />
+          <circle cx="39" cy="53" r="4.5" fill={BL} /><circle cx="39" cy="53" r="2.5" fill={B} />
+          <circle cx="61" cy="49" r="4.5" fill={BL} /><circle cx="61" cy="49" r="2.5" fill={B} />
+          <circle cx="50" cy="62" r="4.5" fill={BL} /><circle cx="50" cy="62" r="2.5" fill={B} />
+          <circle cx="29" cy="60" r="3.5" fill={BL} /><circle cx="29" cy="60" r="1.8" fill={B} />
+        </>
+      )}
+
+      {/* ── Level 6 — Thriving: majestic tree + sparkles ── */}
+      {level >= 6 && (
+        <>
+          <ellipse cx="50" cy="52" rx="29" ry="23" fill={S} />
+          <ellipse cx="50" cy="44" rx="22" ry="16" fill={SL} />
+          <ellipse cx="31" cy="61" rx="16" ry="12" fill={S} />
+          <ellipse cx="69" cy="61" rx="16" ry="12" fill={S} />
+          <ellipse cx="31" cy="61" rx="10" ry="8" fill={SL} />
+          <ellipse cx="69" cy="61" rx="10" ry="8" fill={SL} />
+          <circle cx="38" cy="49" r="5" fill={BL} /><circle cx="38" cy="49" r="2.8" fill={B} />
+          <circle cx="62" cy="45" r="5" fill={BL} /><circle cx="62" cy="45" r="2.8" fill={B} />
+          <circle cx="50" cy="58" r="5" fill={BL} /><circle cx="50" cy="58" r="2.8" fill={B} />
+          <circle cx="27" cy="58" r="4" fill={BL} /><circle cx="27" cy="58" r="2.2" fill={B} />
+          <circle cx="73" cy="56" r="4" fill={BL} /><circle cx="73" cy="56" r="2.2" fill={B} />
+          <text x="16" y="44" fontSize="9" textAnchor="middle" dominantBaseline="middle">✨</text>
+          <text x="82" y="38" fontSize="9" textAnchor="middle" dominantBaseline="middle">✨</text>
+          <text x="50" y="20" fontSize="11" textAnchor="middle" dominantBaseline="middle">✨</text>
+        </>
+      )}
+
+      {/* ── Pot (always rendered last so it sits on top) ── */}
+      <path d="M 37,107 L 63,107 L 66,124 Q 66,127 63,127 L 37,127 Q 34,127 34,124 Z" fill={POT} />
+      <rect x="33" y="103" width="34" height="7" rx="3" fill={POT_RIM} />
+      <ellipse cx="50" cy="105" rx="16" ry="3.5" fill={SOIL} />
+      {/* Pot highlight */}
+      <line x1="40" y1="111" x2="38" y2="124" stroke="rgba(255,255,255,0.18)" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 interface PlayerStatsProps {
   totalXp: number
   streak: number
@@ -19,59 +146,54 @@ export function PlayerStats({ totalXp, streak, achievementCount, streakAtRisk = 
       )
 
   return (
-    <div className={`card ${streakAtRisk ? 'border border-amber-200' : ''}`}>
-      <div className="flex items-center gap-4">
-        {/* Level */}
-        <div className="flex flex-col items-center min-w-[52px]">
-          <span className="text-2xl leading-none">{levelInfo.icon}</span>
-          <span className="text-[10px] font-semibold text-gray-500 mt-1 uppercase tracking-wide">
-            Lv {levelInfo.level}
-          </span>
+    <div className={`card ${streakAtRisk ? 'border border-amber-200 bg-amber-50/20' : ''}`}>
+      {/* Plant — centrepiece */}
+      <div className="flex justify-center mb-2">
+        <div className="w-24 h-28">
+          <PlantSVG level={levelInfo.level} />
         </div>
-
-        {/* XP bar + label */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline justify-between mb-1">
-            <span className="text-sm font-semibold text-gray-800">{levelInfo.name}</span>
-            {!isMaxLevel && (
-              <span className="text-[11px] text-gray-400">
-                {levelInfo.xpInLevel} / {levelInfo.nextLevelXp! - levelInfo.xpForLevel} XP
-              </span>
-            )}
-          </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-sprout-400 to-bloom-400 transition-all"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          {isMaxLevel && (
-            <p className="text-[11px] text-bloom-600 mt-0.5 font-medium">Max level reached!</p>
-          )}
-        </div>
-
-        {/* Streak */}
-        <div className="flex flex-col items-center min-w-[44px]">
-          <span className="text-lg leading-none">{streak > 0 ? '🔥' : '💤'}</span>
-          <span className="text-[10px] font-semibold text-gray-500 mt-1 text-center">
-            {streak > 0 ? `${streak}d` : 'Start!'}
-          </span>
-        </div>
-
-        {/* Achievements — links to full achievements page */}
-        <Link href="/achievements" className="flex flex-col items-center min-w-[44px]">
-          <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-bloom-100 text-bloom-700 text-xs font-bold">
-            {achievementCount}
-          </span>
-          <span className="text-[10px] text-gray-400 mt-1">badges</span>
-        </Link>
       </div>
 
-      {streakAtRisk && (
-        <p className="text-[11px] text-amber-600 font-medium mt-2 pt-2 border-t border-amber-100">
-          🔥 Log a transaction today to keep your {streak}-day streak!
-        </p>
-      )}
+      {/* Level name */}
+      <div className="text-center mb-3">
+        <p className="font-display font-bold text-gray-900">{levelInfo.name}</p>
+        <p className="text-xs text-gray-400">Level {levelInfo.level + 1}</p>
+      </div>
+
+      {/* XP bar */}
+      <div className="mb-3">
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="text-xs text-gray-500">{totalXp} XP</span>
+          {!isMaxLevel && (
+            <span className="text-[11px] text-gray-400">
+              {levelInfo.xpInLevel} / {levelInfo.nextLevelXp! - levelInfo.xpForLevel} to next
+            </span>
+          )}
+        </div>
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-sprout-400 to-bloom-400 transition-all duration-700"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        {isMaxLevel && (
+          <p className="text-[11px] text-bloom-600 mt-0.5 font-medium text-center">Max level reached! ✨</p>
+        )}
+      </div>
+
+      {/* Bottom row: streak + badges */}
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <span className={`text-sm font-medium flex items-center gap-1.5 ${
+          streakAtRisk ? 'text-amber-600' : streak > 0 ? 'text-gray-700' : 'text-gray-400'
+        }`}>
+          <span>{streak > 0 ? '🔥' : '💤'}</span>
+          {streak > 0 ? `${streak} day streak` : 'Start a streak!'}
+          {streakAtRisk && <span className="text-xs font-normal">· log today!</span>}
+        </span>
+        <Link href="/achievements" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
+          {achievementCount} badges →
+        </Link>
+      </div>
     </div>
   )
 }

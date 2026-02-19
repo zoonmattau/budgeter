@@ -336,6 +336,7 @@ export interface Database {
           date: string
           is_recurring: boolean
           bill_id: string | null
+          notes: string | null
           created_at: string
           updated_at: string
         }
@@ -352,6 +353,7 @@ export interface Database {
           date: string
           is_recurring?: boolean
           bill_id?: string | null
+          notes?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -368,6 +370,7 @@ export interface Database {
           date?: string
           is_recurring?: boolean
           bill_id?: string | null
+          notes?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -387,6 +390,7 @@ export interface Database {
           is_active: boolean
           is_one_off: boolean
           saved_amount: number
+          last_paid_date: string | null
           created_at: string
         }
         Insert: {
@@ -402,6 +406,7 @@ export interface Database {
           is_active?: boolean
           is_one_off?: boolean
           saved_amount?: number
+          last_paid_date?: string | null
           created_at?: string
         }
         Update: {
@@ -417,6 +422,7 @@ export interface Database {
           is_active?: boolean
           is_one_off?: boolean
           saved_amount?: number
+          last_paid_date?: string | null
           created_at?: string
         }
         Relationships: []

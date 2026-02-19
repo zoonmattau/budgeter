@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { format, differenceInDays } from 'date-fns'
-import { Calendar, RotateCcw, ChevronRight, CalendarCheck, AlertCircle, Clock } from 'lucide-react'
+import { Calendar, RotateCcw, CalendarCheck, AlertCircle, Clock, Check } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CategoryChip } from '@/components/ui/category-chip'
+import { markBillPaid } from '@/app/actions/bills'
 import type { Tables } from '@/lib/database.types'
 
 type BillWithCategory = Tables<'bills'> & {
@@ -32,15 +35,32 @@ const frequencyLabels: Record<string, string> = {
 }
 
 function BillCard({ bill }: { bill: BillWithCategory }) {
-  const dueDate = new Date(bill.next_due)
+  const [isPaying, setIsPaying] = useState(false)
+  const [paid, setPaid] = useState(false)
+  const router = useRouter()
+
+  const dueDate = new Date(bill.next_due + 'T00:00:00')
   const daysUntil = differenceInDays(dueDate, new Date())
   const isOverdue = daysUntil < 0
 
+  async function handleMarkPaid(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsPaying(true)
+    const result = await markBillPaid(bill.id)
+    if (result.success) {
+      setPaid(true)
+      setTimeout(() => router.refresh(), 700)
+    }
+    setIsPaying(false)
+  }
+
   return (
-    <Link
-      href={`/bills/${bill.id}`}
-      className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all"
-    >
+    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+      paid
+        ? 'border-sprout-200 bg-sprout-50'
+        : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm'
+    }`}>
       {bill.categories && (
         <CategoryChip
           name={bill.categories.name}
@@ -49,7 +69,7 @@ function BillCard({ bill }: { bill: BillWithCategory }) {
           size="sm"
         />
       )}
-      <div className="flex-1 min-w-0">
+      <Link href={`/bills/${bill.id}`} className="flex-1 min-w-0">
         <p className="font-medium text-gray-900 text-sm truncate">{bill.name}</p>
         <div className="flex items-center gap-2 text-xs text-gray-400">
           <span>{format(dueDate, 'EEE, MMM d')}</span>
@@ -65,12 +85,25 @@ function BillCard({ bill }: { bill: BillWithCategory }) {
             </span>
           )}
         </div>
-      </div>
+      </Link>
       <p className={`font-semibold text-sm ${isOverdue ? 'text-red-600' : 'text-gray-900'}`}>
         {formatCurrency(bill.amount)}
       </p>
-      <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
-    </Link>
+      <button
+        onClick={handleMarkPaid}
+        disabled={isPaying || paid}
+        title="Mark as paid"
+        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+          paid
+            ? 'bg-sprout-500 text-white'
+            : isPaying
+              ? 'bg-gray-100 text-gray-300 animate-pulse'
+              : 'bg-gray-100 text-gray-400 hover:bg-sprout-100 hover:text-sprout-600'
+        }`}
+      >
+        <Check className="w-4 h-4" />
+      </button>
+    </div>
   )
 }
 

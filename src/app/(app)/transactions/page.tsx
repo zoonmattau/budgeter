@@ -6,12 +6,13 @@ import { QuickAddButton } from '@/components/transactions/quick-add-button'
 import { AccountFilter } from '@/components/transactions/account-filter'
 import { BackButton } from '@/components/ui/back-button'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
+import { TransactionSearch } from '@/components/transactions/transaction-search'
 import { format, startOfMonth } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
 
 interface TransactionsPageProps {
-  searchParams: Promise<{ scope?: string; account?: string; category?: string }>
+  searchParams: Promise<{ scope?: string; account?: string; category?: string; q?: string }>
 }
 
 export default async function TransactionsPage({ searchParams }: TransactionsPageProps) {
@@ -67,6 +68,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
   const accountFilter = params.account || null
   const categoryFilter = params.category || null
+  const searchQuery = params.q || null
 
   // Build transaction query with optional filters
   const buildTransactionQuery = () => {
@@ -96,7 +98,12 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
     // Apply category filter
     if (categoryFilter) {
-      query = query.eq('category_id', categoryFilter)
+      query = query.eq('category_id', categoryFilter).neq('type', 'transfer')
+    }
+
+    // Apply text search
+    if (searchQuery) {
+      query = query.ilike('description', `%${searchQuery}%`)
     }
 
     return query.order('date', { ascending: false }).limit(accountFilter ? 100 : 500)
@@ -213,6 +220,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
             <span className="sm:hidden">Import</span>
           </Link>
         </div>
+        <TransactionSearch />
         <div className="flex items-center gap-2 flex-wrap">
           {isInHousehold && <ScopeToggle />}
           <AccountFilter accounts={allAccounts || []} selectedAccountId={accountFilter} />

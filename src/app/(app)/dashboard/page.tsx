@@ -12,9 +12,13 @@ import { CreditLimitWarning } from '@/components/dashboard/credit-limit-warning'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { CashflowPreview } from '@/components/dashboard/cashflow-preview'
 import { PlayerStats } from '@/components/dashboard/player-stats'
+import { MonthlyRecap } from '@/components/dashboard/monthly-recap'
+import { ActiveChallenge } from '@/components/dashboard/active-challenge'
+import { syncWeeklyChallenges } from '@/app/actions/challenges'
+import { PaydayModal } from '@/components/dashboard/payday-modal'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
 import { formatCurrency } from '@/lib/utils'
-import { format, startOfMonth, subMonths, addDays, subDays } from 'date-fns'
+import { format, startOfMonth, subMonths, addDays, subDays, startOfISOWeek } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
 import { calculateStreakFromTransactions } from '@/lib/gamification'
@@ -115,6 +119,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     { data: userStats },
     { count: achievementCount },
     { data: streakTransactions },
+    { data: weekTransactions },
   ] = await Promise.all([
     // Income entries - scope aware
     scope === 'household' && householdId
@@ -339,6 +344,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .eq('type', 'expense')
       .gte('date', format(subDays(today, 35), 'yyyy-MM-dd'))
       .lte('date', format(today, 'yyyy-MM-dd')),
+
+    // This week's transactions for challenge progress (personal only)
+    supabase
+      .from('transactions')
+      .select('date, type, amount')
+      .eq('user_id', user.id)
+      .is('household_id', null)
+      .gte('date', format(startOfISOWeek(today), 'yyyy-MM-dd'))
+      .lte('date', format(today, 'yyyy-MM-dd')),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
@@ -366,6 +380,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       void awardXP(user.id, 5)
     }
   }
+
+  // Sync weekly challenges (personal only — challenges are a personal metric)
+  const activeChallenges = scope === 'personal'
+    ? await syncWeeklyChallenges(user.id, weekTransactions || [], currentStreak)
+    : []
 
   // For household budgets: deduplicate by category NAME (not ID) since each member
   // has their own categories with different IDs. Keep the most recent per name.
@@ -619,6 +638,25 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {isInHousehold && <ScopeToggle />}
       </div>
 
+      {/* Savings rate pill — only shown in personal scope when income exists */}
+      {scope === 'personal' && totalIncome > 0 && (() => {
+        const saved = totalIncome - totalSpent
+        const savingsRate = Math.round((saved / totalIncome) * 100)
+        const isPositive = savingsRate > 0
+        return (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium ${
+            isPositive ? 'bg-sprout-50 text-sprout-700' : 'bg-coral-50 text-coral-700'
+          }`}>
+            <span>{isPositive ? '📈' : '📉'}</span>
+            <span>
+              {isPositive
+                ? `You're saving ${savingsRate}% of income this month — ${formatCurrency(saved)} saved so far`
+                : `Spending ${Math.abs(savingsRate)}% more than income this month`}
+            </span>
+          </div>
+        )
+      })()}
+
       {/* Player Stats — XP, streak, badges */}
       {scope === 'personal' && (
         <PlayerStats
@@ -626,6 +664,37 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           streak={currentStreak}
           achievementCount={achievementCount ?? 0}
           streakAtRisk={streakAtRisk}
+        />
+      )}
+
+      {/* Payday flow — shown when no income logged this month and recurring sources exist */}
+      {scope === 'personal' && totalIncome === 0 && (recurringIncome || []).length > 0 && (
+        <PaydayModal
+          recurringIncome={recurringIncome || []}
+          userId={user.id}
+        />
+      )}
+
+      {/* Weekly Challenges */}
+      {scope === 'personal' && activeChallenges.length > 0 && (
+        <div className="space-y-3">
+          {activeChallenges.map(c => (
+            <ActiveChallenge key={c.id} challenge={c} />
+          ))}
+        </div>
+      )}
+
+      {/* Monthly Recap */}
+      {scope === 'personal' && totalIncome > 0 && (
+        <MonthlyRecap
+          totalIncome={totalIncome}
+          totalSpent={totalSpent}
+          totalAllocated={totalAllocated}
+          topCategory={topCategory}
+          netWorthChange={0}
+          month={format(new Date(), 'MMMM yyyy')}
+          daysIntoMonth={daysInMonth}
+          daysInMonth={new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()}
         />
       )}
 

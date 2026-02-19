@@ -160,6 +160,41 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
   // Current investments
   const currentInvestments = investmentAccounts?.reduce((sum, a) => sum + Number(a.balance), 0) || 0
 
+  // Category trends: compare this month vs 3-month average
+  const thisMonthStr = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+  const threeMonthsAgo = format(startOfMonth(subMonths(new Date(), 3)), 'yyyy-MM-dd')
+
+  const thisMonthTx = (transactions || []).filter(t => t.date >= thisMonthStr && t.type === 'expense')
+  const prevThreeMonthTx = (transactions || []).filter(t => t.date >= threeMonthsAgo && t.date < thisMonthStr && t.type === 'expense')
+
+  // Sum by category for this month and prev 3 months
+  const thisMonthByCategory = new Map<string, { name: string; amount: number }>()
+  for (const t of thisMonthTx) {
+    if (!t.categories) continue
+    const existing = thisMonthByCategory.get(t.categories.name) || { name: t.categories.name, amount: 0 }
+    existing.amount += Number(t.amount)
+    thisMonthByCategory.set(t.categories.name, existing)
+  }
+
+  const prevByCategory = new Map<string, number>()
+  for (const t of prevThreeMonthTx) {
+    if (!t.categories) continue
+    const existing = prevByCategory.get(t.categories.name) || 0
+    prevByCategory.set(t.categories.name, existing + Number(t.amount))
+  }
+
+  // Build trend list: categories where this month deviates >20% from 3-month avg
+  const categoryTrends = Array.from(thisMonthByCategory.entries())
+    .map(([name, { amount }]) => {
+      const prevTotal = prevByCategory.get(name) || 0
+      const prevAvg = prevTotal / 3
+      const pctChange = prevAvg > 0 ? Math.round(((amount - prevAvg) / prevAvg) * 100) : null
+      return { name, amount, prevAvg, pctChange }
+    })
+    .filter(t => t.pctChange !== null && Math.abs(t.pctChange) >= 20)
+    .sort((a, b) => Math.abs(b.pctChange!) - Math.abs(a.pctChange!))
+    .slice(0, 5)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -169,6 +204,29 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
         </div>
         <ScopeToggle />
       </div>
+
+      {/* Category trends callout */}
+      {categoryTrends.length > 0 && (
+        <div className="card">
+          <h3 className="font-display font-semibold text-gray-900 mb-3">Spending Trends</h3>
+          <div className="space-y-2">
+            {categoryTrends.map(trend => (
+              <div key={trend.name} className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{trend.name}</p>
+                  <p className="text-xs text-gray-400">3-month avg: ${trend.prevAvg.toFixed(0)}/mo</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-gray-900">${trend.amount.toFixed(0)}</p>
+                  <p className={`text-xs font-medium ${trend.pctChange! > 0 ? 'text-coral-500' : 'text-sprout-600'}`}>
+                    {trend.pctChange! > 0 ? '▲' : '▼'} {Math.abs(trend.pctChange!)}% vs avg
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <InsightsClient
         transactions={transactions || []}
