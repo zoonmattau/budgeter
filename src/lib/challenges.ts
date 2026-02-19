@@ -1,4 +1,4 @@
-import { getISOWeek, startOfISOWeek, endOfISOWeek, format } from 'date-fns'
+import { startOfISOWeek, endOfISOWeek, format } from 'date-fns'
 
 export type ChallengeType = 'save_amount' | 'reduce_category' | 'no_spend_day' | 'streak'
 

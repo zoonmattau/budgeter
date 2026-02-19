@@ -53,7 +53,7 @@ export function PaydayModal({ recurringIncome, userId }: PaydayModalProps) {
       >
         <span className="text-3xl">💰</span>
         <div className="flex-1">
-          <p className="font-semibold text-gray-900">It's Payday!</p>
+          <p className="font-semibold text-gray-900">It&apos;s Payday!</p>
           <p className="text-sm text-gray-500">Log your income for {monthLabel}</p>
         </div>
         <span className="text-xs font-medium text-sprout-600 bg-sprout-100 px-2 py-1 rounded-full flex-shrink-0">

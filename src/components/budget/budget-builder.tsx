@@ -226,7 +226,7 @@ export function BudgetBuilder({
     lastMonth.setMonth(lastMonth.getMonth() - 1)
     const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`
 
-    let query = isHousehold && householdId
+    const query = isHousehold && householdId
       ? supabase.from('budgets').select('category_id, allocated, categories(name)').eq('household_id', householdId).eq('month', lastMonthStr).eq('user_id', user.id)
       : supabase.from('budgets').select('category_id, allocated, categories(name)').eq('user_id', user.id).eq('month', lastMonthStr).is('household_id', null)
 
