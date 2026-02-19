@@ -11,6 +11,9 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import { useScopeOptional } from '@/lib/scope-context'
 import type { Tables } from '@/lib/database.types'
+import { awardXP, checkAndUnlockAchievements } from '@/app/actions/gamification'
+import type { AchievementType } from '@/lib/gamification'
+import { AchievementToast } from '@/components/ui/achievement-toast'
 
 interface QuickAddButtonProps {
   expenseCategories: Tables<'categories'>[]
@@ -53,6 +56,8 @@ export function QuickAddButton({ expenseCategories: initialExpenseCategories, in
   const [selectedToAccountId, setSelectedToAccountId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [toastAchievements, setToastAchievements] = useState<AchievementType[]>([])
+  const [toastLevelUp, setToastLevelUp] = useState<{ icon: string; name: string; level: number } | null>(null)
 
   // Recurring transaction fields
   const [isRecurring, setIsRecurring] = useState(false)
@@ -367,6 +372,18 @@ async function handleSubmit(e: React.FormEvent) {
     }
 
     if (!error) {
+      // Award XP and check achievements for expense/income transactions (not future-dated)
+      if (!isFutureDate && (isExpense || transactionType === 'income')) {
+        const [xpResult, unlocked] = await Promise.all([
+          awardXP(user.id, 10),
+          checkAndUnlockAchievements(user.id, { transactionCount: 1 }),
+        ])
+        if (unlocked.length > 0) setToastAchievements(unlocked)
+        if (xpResult.leveledUp && xpResult.newLevelName && xpResult.newLevelIcon && xpResult.newLevel) {
+          setToastLevelUp({ icon: xpResult.newLevelIcon, name: xpResult.newLevelName, level: xpResult.newLevel })
+        }
+      }
+
       // Show success state
       setShowSuccess(true)
       setLoading(false)
@@ -393,14 +410,25 @@ async function handleSubmit(e: React.FormEvent) {
           : (selectedCategory || incomePreset)
   const isFormValid = hasValidSelection && amount
 
+  const toast = (toastAchievements.length > 0 || toastLevelUp) ? (
+    <AchievementToast
+      achievements={toastAchievements}
+      levelUp={toastLevelUp}
+      onDismiss={() => { setToastAchievements([]); setToastLevelUp(null) }}
+    />
+  ) : null
+
   if (!isOpen) {
     return (
-      <button
-        onClick={handleOpen}
-        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-bloom-500 to-bloom-600 text-white shadow-lg shadow-bloom-500/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-      >
-        <Plus className="w-6 h-6" />
-      </button>
+      <>
+        <button
+          onClick={handleOpen}
+          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-bloom-500 to-bloom-600 text-white shadow-lg shadow-bloom-500/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+        {toast}
+      </>
     )
   }
 
@@ -1103,6 +1131,7 @@ async function handleSubmit(e: React.FormEvent) {
           animation: slide-up 0.3s ease-out;
         }
       `}</style>
+      {toast}
     </div>
   )
 }

@@ -15,6 +15,9 @@ import type { Tables } from '@/lib/database.types'
 import { CreateCategoryModal } from '@/components/categories/create-category-modal'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
+import { awardXP, checkAndUnlockAchievements } from '@/app/actions/gamification'
+import type { AchievementType } from '@/lib/gamification'
+import { AchievementToast } from '@/components/ui/achievement-toast'
 
 interface MemberContribution {
   user_id: string
@@ -177,6 +180,8 @@ export function BudgetBuilder({
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [toastAchievements, setToastAchievements] = useState<AchievementType[]>([])
+  const [toastLevelUp, setToastLevelUp] = useState<{ icon: string; name: string; level: number } | null>(null)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
   const [extraDebtPayment, setExtraDebtPayment] = useState(savedExtraDebtPayment)
   const [sinkingFundsExpanded, setSinkingFundsExpanded] = useState(false)
@@ -480,6 +485,14 @@ export function BudgetBuilder({
       console.error('Error saving budget settings:', settingsError)
     }
 
+    const [xpResult, unlocked] = await Promise.all([
+      awardXP(user.id, 15),
+      checkAndUnlockAchievements(user.id, { budgetSet: true }),
+    ])
+    if (unlocked.length > 0) setToastAchievements(unlocked)
+    if (xpResult.leveledUp && xpResult.newLevelName && xpResult.newLevelIcon && xpResult.newLevel) {
+      setToastLevelUp({ icon: xpResult.newLevelIcon, name: xpResult.newLevelName, level: xpResult.newLevel })
+    }
     setSaving(false)
     setSaveSuccess(true)
     setTimeout(() => setSaveSuccess(false), 2000)
@@ -1785,6 +1798,13 @@ export function BudgetBuilder({
             </div>
           )}
         </div>
+      )}
+      {(toastAchievements.length > 0 || toastLevelUp) && (
+        <AchievementToast
+          achievements={toastAchievements}
+          levelUp={toastLevelUp}
+          onDismiss={() => { setToastAchievements([]); setToastLevelUp(null) }}
+        />
       )}
     </div>
   )

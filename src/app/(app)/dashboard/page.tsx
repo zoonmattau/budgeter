@@ -11,11 +11,14 @@ import { PendingConfirmations } from '@/components/dashboard/pending-confirmatio
 import { CreditLimitWarning } from '@/components/dashboard/credit-limit-warning'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { CashflowPreview } from '@/components/dashboard/cashflow-preview'
+import { PlayerStats } from '@/components/dashboard/player-stats'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
 import { formatCurrency } from '@/lib/utils'
 import { format, startOfMonth, subMonths, addDays, subDays } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
+import { calculateStreakFromTransactions } from '@/lib/gamification'
+import { awardXP, syncStreak, checkAndUnlockAchievements } from '@/app/actions/gamification'
 
 interface DashboardPageProps {
   searchParams: Promise<{ scope?: string }>
@@ -109,6 +112,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     { data: allBills },
     { data: budgetSettings },
     { data: lastMonthTransactions },
+    { data: userStats },
+    { count: achievementCount },
+    { data: streakTransactions },
   ] = await Promise.all([
     // Income entries - scope aware
     scope === 'household' && householdId
@@ -310,9 +316,56 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             .gte('date', lastMonthStart)
             .lte('date', sameDayLastMonth)
     })(),
+
+    // User stats for gamification
+    supabase
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+
+    // Achievement count
+    supabase
+      .from('achievements')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id),
+
+    // Streak: personal expense dates for last 35 days (covers cross-month streaks)
+    supabase
+      .from('transactions')
+      .select('date, type')
+      .eq('user_id', user.id)
+      .is('household_id', null)
+      .eq('type', 'expense')
+      .gte('date', format(subDays(today, 35), 'yyyy-MM-dd'))
+      .lte('date', format(today, 'yyyy-MM-dd')),
   ])
 
   const totalIncome = incomeEntries?.reduce((sum, e) => sum + Number(e.amount), 0) || 0
+
+  // Gamification: calculate streak using a dedicated 35-day window so cross-month
+  // streaks are counted correctly (current month query would reset to 0 on the 1st).
+  // Personal scope only — streak is a personal metric.
+  const currentStreak = calculateStreakFromTransactions(streakTransactions || [])
+
+  // Streak at risk: streak exists, it's after 6pm, and no transaction logged today yet
+  const todayDateStr = format(today, 'yyyy-MM-dd')
+  const hasLoggedToday = (streakTransactions || []).some(t => t.date === todayDateStr)
+  const streakAtRisk = scope === 'personal' && currentStreak > 0 && today.getHours() >= 18 && !hasLoggedToday
+
+  // Persist streak to DB and check streak achievements
+  if (scope === 'personal') {
+    void syncStreak(user.id, currentStreak)
+    void checkAndUnlockAchievements(user.id, { streak: currentStreak })
+
+    // Daily login XP: award 5 XP once per day (check if updated_at is today)
+    const lastUpdated = userStats?.updated_at
+      ? format(new Date(userStats.updated_at), 'yyyy-MM-dd')
+      : null
+    if (lastUpdated !== todayDateStr) {
+      void awardXP(user.id, 5)
+    }
+  }
 
   // For household budgets: deduplicate by category NAME (not ID) since each member
   // has their own categories with different IDs. Keep the most recent per name.
@@ -429,6 +482,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .eq('status', 'active')
 
         if (error) console.error('Error completing goal:', error)
+        else {
+          void awardXP(user.id, 100)
+          void checkAndUnlockAchievements(user.id, { goalCompleted: true })
+        }
       } else {
         if (Math.abs(paidOff - currentAmount) > 0.01) {
           const { error } = await supabase
@@ -479,6 +536,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             .eq('id', goal.id)
 
           if (error) console.error('Error syncing milestone goal:', error)
+          else if (shouldBeCompleted && goal.status !== 'completed') {
+            void awardXP(user.id, 100)
+            void checkAndUnlockAchievements(user.id, { goalCompleted: true })
+          }
         }
       })
 
@@ -557,6 +618,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </div>
         {isInHousehold && <ScopeToggle />}
       </div>
+
+      {/* Player Stats — XP, streak, badges */}
+      {scope === 'personal' && (
+        <PlayerStats
+          totalXp={userStats?.total_xp ?? 0}
+          streak={currentStreak}
+          achievementCount={achievementCount ?? 0}
+          streakAtRisk={streakAtRisk}
+        />
+      )}
 
       {/* Budget Overview Card */}
       <BudgetOverview
@@ -684,6 +755,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         topCategory={topCategory}
         transactions={typedTransactions}
         daysInMonth={daysInMonth}
+        streak={currentStreak}
       />
 
       {/* Activity Feed - only shown in household view */}

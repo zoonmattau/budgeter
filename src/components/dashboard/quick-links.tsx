@@ -23,6 +23,7 @@ interface InsightsTeaserProps {
   topCategory?: { name: string; amount: number; color: string } | null
   transactions?: Transaction[]
   daysInMonth?: number
+  streak?: number
 }
 
 export function InsightsTeaser({
@@ -36,6 +37,7 @@ export function InsightsTeaser({
   topCategory,
   transactions = [],
   daysInMonth = new Date().getDate(),
+  streak = 0,
 }: InsightsTeaserProps) {
   const [activeSlide, setActiveSlide] = useState(0)
 
@@ -62,27 +64,6 @@ export function InsightsTeaser({
   // Use discretionary budget for daily spending target (excludes rent, bills, fixed costs)
   const discretionaryRemaining = Math.max(0, discretionaryAllocated - discretionarySpent)
   const dailyBudgetRemaining = daysLeft > 0 ? discretionaryRemaining / daysLeft : 0
-
-  // Spending streak: count consecutive days with transactions
-  const today = new Date()
-  let streak = 0
-  if (hasTransactions) {
-    const txnDates = new Set(
-      transactions
-        .filter(t => t.type === 'expense')
-        .map(t => t.date)
-    )
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(today)
-      d.setDate(d.getDate() - i)
-      const dateStr = d.toISOString().split('T')[0]
-      if (txnDates.has(dateStr)) {
-        streak++
-      } else if (i > 0) {
-        break
-      }
-    }
-  }
 
   if (!hasTransactions) {
     return (

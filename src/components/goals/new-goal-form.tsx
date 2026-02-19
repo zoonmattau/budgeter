@@ -11,6 +11,9 @@ import { formatCurrency } from '@/lib/utils'
 import { calculateMilestoneInfo } from '@/lib/net-worth-calculations'
 import { LikelihoodBadge } from '@/components/goals/likelihood-badge'
 import type { Tables } from '@/lib/database.types'
+import { awardXP, checkAndUnlockAchievements } from '@/app/actions/gamification'
+import type { AchievementType } from '@/lib/gamification'
+import { AchievementToast } from '@/components/ui/achievement-toast'
 
 const goalTemplates = [
   { name: 'Emergency Fund', icon: Sparkles, color: '#d946ef', target: 10000 },
@@ -39,6 +42,8 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
   const [selectedTemplate, setSelectedTemplate] = useState<typeof goalTemplates[0] | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState<string>('')
+  const [toastAchievements, setToastAchievements] = useState<AchievementType[]>([])
+  const [toastLevelUp, setToastLevelUp] = useState<{ icon: string; name: string; level: number } | null>(null)
 
   const supabase = createClient()
 
@@ -133,6 +138,17 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
     })
 
     if (!error) {
+      const [xpResult, unlocked] = await Promise.all([
+        awardXP(user.id, 25),
+        checkAndUnlockAchievements(user.id, { goalCount: 1 }),
+      ])
+      if (unlocked.length > 0) setToastAchievements(unlocked)
+      if (xpResult.leveledUp && xpResult.newLevelName && xpResult.newLevelIcon && xpResult.newLevel) {
+        setToastLevelUp({ icon: xpResult.newLevelIcon, name: xpResult.newLevelName, level: xpResult.newLevel })
+      }
+      if (unlocked.length > 0 || xpResult.leveledUp) {
+        await new Promise(r => setTimeout(r, 2500))
+      }
       router.push('/goals')
       router.refresh()
     }
@@ -141,6 +157,14 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
   }
 
   return (
+    <>
+    {(toastAchievements.length > 0 || toastLevelUp) && (
+      <AchievementToast
+        achievements={toastAchievements}
+        levelUp={toastLevelUp}
+        onDismiss={() => { setToastAchievements([]); setToastLevelUp(null) }}
+      />
+    )}
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/goals" className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors">
@@ -675,5 +699,6 @@ export function NewGoalForm({ debtAccounts, currentNetWorth, avgMonthlyGrowth }:
         </div>
       )}
     </div>
+    </>
   )
 }
