@@ -3,13 +3,14 @@ import { ACHIEVEMENT_CATALOG, getLevel, type AchievementType } from '@/lib/gamif
 import { format } from 'date-fns'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { ActiveChallenge } from '@/components/dashboard/active-challenge'
 
 export default async function AchievementsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const [{ data: earned }, { data: userStats }] = await Promise.all([
+  const [{ data: earned }, { data: userStats }, { data: challenges }] = await Promise.all([
     supabase
       .from('achievements')
       .select('type, earned_at')
@@ -19,6 +20,13 @@ export default async function AchievementsPage() {
       .select('total_xp, current_streak, longest_streak')
       .eq('user_id', user.id)
       .maybeSingle(),
+    supabase
+      .from('challenges')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('status', ['active', 'completed'])
+      .gte('end_date', format(new Date(), 'yyyy-MM-dd'))
+      .order('created_at', { ascending: true }),
   ])
 
   const earnedMap = new Map((earned || []).map(a => [a.type, a.earned_at as string]))
@@ -63,6 +71,18 @@ export default async function AchievementsPage() {
           <p className="text-[10px] text-gray-400">Best: {userStats?.longest_streak ?? 0}</p>
         </div>
       </div>
+
+      {/* Weekly Challenges */}
+      {(challenges || []).length > 0 && (
+        <div>
+          <h2 className="font-display font-semibold text-gray-900 mb-3">Weekly Challenges</h2>
+          <div className="space-y-3">
+            {(challenges || []).map(c => (
+              <ActiveChallenge key={c.id} challenge={c} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Achievement grid */}
       <div>

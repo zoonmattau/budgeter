@@ -45,13 +45,32 @@ export function getLevel(totalXp: number): LevelInfo {
 
 // Achievement catalog
 export type AchievementType =
+  // Onboarding
   | 'first_transaction'
   | 'first_goal'
-  | 'goal_complete'
-  | 'streak_7'
-  | 'streak_30'
   | 'budget_set'
+  // Streaks
+  | 'streak_3'
+  | 'streak_7'
+  | 'streak_14'
+  | 'streak_30'
+  | 'streak_100'
+  // Transaction volume
+  | 'transactions_10'
+  | 'transactions_50'
+  | 'transactions_100'
+  // Goals
+  | 'goal_complete'
+  | 'goals_3_complete'
+  | 'goals_5_complete'
+  // Challenges
   | 'challenges_won'
+  | 'challenges_3'
+  | 'challenges_10'
+  // Financial milestones
+  | 'net_worth_positive'
+  | 'savings_rate_20'
+  | 'under_budget'
 
 export interface AchievementMeta {
   label: string
@@ -61,6 +80,7 @@ export interface AchievementMeta {
 }
 
 export const ACHIEVEMENT_CATALOG: Record<AchievementType, AchievementMeta> = {
+  // Onboarding
   first_transaction: {
     label: 'First Transaction',
     description: 'Logged your first expense',
@@ -73,35 +93,118 @@ export const ACHIEVEMENT_CATALOG: Record<AchievementType, AchievementMeta> = {
     icon: '🎯',
     xpReward: 25,
   },
-  goal_complete: {
-    label: 'Goal Crusher',
-    description: 'Completed a savings goal',
-    icon: '🏆',
-    xpReward: 100,
-  },
-  streak_7: {
-    label: '7-Day Streak',
-    description: 'Logged transactions 7 days in a row',
-    icon: '🔥',
-    xpReward: 50,
-  },
-  streak_30: {
-    label: '30-Day Streak',
-    description: 'Logged transactions 30 days in a row',
-    icon: '💫',
-    xpReward: 200,
-  },
   budget_set: {
     label: 'Planner',
     description: 'Set up your first budget',
     icon: '📊',
     xpReward: 30,
   },
+  // Streaks
+  streak_3: {
+    label: 'On a Roll',
+    description: 'Logged transactions 3 days in a row',
+    icon: '✨',
+    xpReward: 15,
+  },
+  streak_7: {
+    label: 'Week Warrior',
+    description: 'Logged transactions 7 days in a row',
+    icon: '🔥',
+    xpReward: 50,
+  },
+  streak_14: {
+    label: 'Fortnight Focused',
+    description: 'Logged transactions 14 days in a row',
+    icon: '⚡',
+    xpReward: 100,
+  },
+  streak_30: {
+    label: 'Monthly Master',
+    description: 'Logged transactions 30 days in a row',
+    icon: '💫',
+    xpReward: 200,
+  },
+  streak_100: {
+    label: 'Centurion',
+    description: 'Logged transactions 100 days in a row',
+    icon: '🌟',
+    xpReward: 500,
+  },
+  // Transaction volume
+  transactions_10: {
+    label: 'Getting Started',
+    description: 'Logged 10 transactions',
+    icon: '📝',
+    xpReward: 30,
+  },
+  transactions_50: {
+    label: 'Dedicated Tracker',
+    description: 'Logged 50 transactions',
+    icon: '📈',
+    xpReward: 75,
+  },
+  transactions_100: {
+    label: 'Century Club',
+    description: 'Logged 100 transactions',
+    icon: '💯',
+    xpReward: 150,
+  },
+  // Goals
+  goal_complete: {
+    label: 'Goal Crusher',
+    description: 'Completed a savings goal',
+    icon: '🏆',
+    xpReward: 100,
+  },
+  goals_3_complete: {
+    label: 'Hat Trick',
+    description: 'Completed 3 savings goals',
+    icon: '🎖️',
+    xpReward: 200,
+  },
+  goals_5_complete: {
+    label: 'Goal Machine',
+    description: 'Completed 5 savings goals',
+    icon: '🏅',
+    xpReward: 350,
+  },
+  // Challenges
   challenges_won: {
     label: 'Challenge Champion',
-    description: 'Completed a challenge',
+    description: 'Completed your first challenge',
     icon: '🥇',
     xpReward: 75,
+  },
+  challenges_3: {
+    label: 'Triple Threat',
+    description: 'Won 3 weekly challenges',
+    icon: '🥈',
+    xpReward: 150,
+  },
+  challenges_10: {
+    label: 'Challenge Legend',
+    description: 'Won 10 weekly challenges',
+    icon: '🏆',
+    xpReward: 300,
+  },
+  // Financial milestones
+  net_worth_positive: {
+    label: 'In the Green',
+    description: 'Achieved a positive net worth',
+    icon: '🌿',
+    xpReward: 100,
+  },
+  savings_rate_20: {
+    label: 'Super Saver',
+    description: 'Saved 20% or more of income in a month',
+    icon: '💰',
+    xpReward: 75,
+  },
+  under_budget: {
+    label: 'Under Budget',
+    description: 'Finished a month spending less than your budget',
+    icon: '🎯',
+    xpReward: 100,
   },
 }
 

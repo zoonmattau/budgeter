@@ -12,8 +12,6 @@ import { CreditLimitWarning } from '@/components/dashboard/credit-limit-warning'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { CashflowPreview } from '@/components/dashboard/cashflow-preview'
 import { PlayerStats } from '@/components/dashboard/player-stats'
-import { MonthlyRecap } from '@/components/dashboard/monthly-recap'
-import { ActiveChallenge } from '@/components/dashboard/active-challenge'
 import { syncWeeklyChallenges } from '@/app/actions/challenges'
 import { PaydayModal } from '@/components/dashboard/payday-modal'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
@@ -451,6 +449,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const totalLiabilities = accounts?.filter(a => !a.is_asset).reduce((sum, a) => sum + Math.abs(Number(a.balance) || 0), 0) || 0
   const netWorth = totalAssets - totalLiabilities
 
+  // Check financial milestone achievements (needs totalSpent, totalAllocated, netWorth)
+  if (scope === 'personal') {
+    const completedGoalsCount = (goals || []).filter(g => g.status === 'completed').length
+    const savingsRate = totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome) * 100 : 0
+    const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+    const isMonthEnd = today.getDate() === daysInCurrentMonth
+    void checkAndUnlockAchievements(user.id, {
+      goalsCompleted: completedGoalsCount,
+      netWorthPositive: netWorth > 0,
+      savingsRate: totalIncome > 0 ? savingsRate : undefined,
+      underBudget: isMonthEnd && totalIncome > 0 && totalSpent < totalAllocated ? true : undefined,
+    })
+  }
+
   // Get credit cards for expense linking
   const creditCards = accounts?.filter(a => a.type === 'credit' || a.type === 'credit_card') || []
 
@@ -657,44 +669,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         )
       })()}
 
-      {/* Player Stats — XP, streak, badges */}
-      {scope === 'personal' && (
-        <PlayerStats
-          totalXp={userStats?.total_xp ?? 0}
-          streak={currentStreak}
-          achievementCount={achievementCount ?? 0}
-          streakAtRisk={streakAtRisk}
-        />
-      )}
-
       {/* Payday flow — shown when no income logged this month and recurring sources exist */}
       {scope === 'personal' && totalIncome === 0 && (recurringIncome || []).length > 0 && (
         <PaydayModal
           recurringIncome={recurringIncome || []}
           userId={user.id}
-        />
-      )}
-
-      {/* Weekly Challenges */}
-      {scope === 'personal' && activeChallenges.length > 0 && (
-        <div className="space-y-3">
-          {activeChallenges.map(c => (
-            <ActiveChallenge key={c.id} challenge={c} />
-          ))}
-        </div>
-      )}
-
-      {/* Monthly Recap */}
-      {scope === 'personal' && totalIncome > 0 && (
-        <MonthlyRecap
-          totalIncome={totalIncome}
-          totalSpent={totalSpent}
-          totalAllocated={totalAllocated}
-          topCategory={topCategory}
-          netWorthChange={0}
-          month={format(new Date(), 'MMMM yyyy')}
-          daysIntoMonth={daysInMonth}
-          daysInMonth={new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()}
         />
       )}
 
@@ -794,6 +773,51 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           )}
         </Link>
       </div>
+
+      {/* Plant + Challenges row */}
+      {scope === 'personal' && (
+        <div className="grid grid-cols-2 gap-3">
+          <PlayerStats
+            totalXp={userStats?.total_xp ?? 0}
+            streak={currentStreak}
+            achievementCount={achievementCount ?? 0}
+            streakAtRisk={streakAtRisk}
+          />
+          {activeChallenges.length > 0 ? (() => {
+            const completed = activeChallenges.filter(c => c.status === 'completed').length
+            const total = activeChallenges.length
+            return (
+              <Link
+                href="/achievements"
+                className="card card-hover flex flex-col justify-between bg-gradient-to-br from-coral-50 to-amber-50 border border-coral-100"
+              >
+                <div className="w-8 h-8 rounded-xl bg-coral-100 flex items-center justify-center mb-2">
+                  <span className="text-base">⚡</span>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-coral-600 uppercase tracking-wide mb-0.5">Challenges</p>
+                  <p className="text-sm font-semibold text-gray-900 leading-tight">
+                    {completed === total ? 'All done!' : `${completed}/${total} done`}
+                  </p>
+                </div>
+              </Link>
+            )
+          })() : (
+            <Link
+              href="/achievements"
+              className="card card-hover flex flex-col justify-between bg-gradient-to-br from-coral-50 to-amber-50 border border-coral-100"
+            >
+              <div className="w-8 h-8 rounded-xl bg-coral-100 flex items-center justify-center mb-2">
+                <span className="text-base">⚡</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-coral-600 uppercase tracking-wide mb-0.5">Challenges</p>
+                <p className="text-sm font-semibold text-gray-900 leading-tight">No active challenges</p>
+              </div>
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Cash Flow Preview */}
       <CashflowPreview

@@ -146,54 +146,44 @@ export function PlayerStats({ totalXp, streak, achievementCount, streakAtRisk = 
       )
 
   return (
-    <div className={`card ${streakAtRisk ? 'border border-amber-200 bg-amber-50/20' : ''}`}>
-      {/* Plant — centrepiece */}
-      <div className="flex justify-center mb-2">
-        <div className="w-24 h-28">
-          <PlantSVG level={levelInfo.level} />
+    <Link href="/achievements" className={`card card-hover flex items-center gap-3 ${streakAtRisk ? 'border border-amber-200 bg-amber-50/20' : ''}`}>
+      {/* Plant */}
+      <div className="w-14 h-16 flex-shrink-0">
+        <PlantSVG level={levelInfo.level} />
+      </div>
+
+      {/* Stats */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline justify-between">
+          <p className="font-display font-bold text-gray-900 text-sm">{levelInfo.name}</p>
+          <p className="text-[11px] text-gray-400">Lv {levelInfo.level + 1}</p>
         </div>
-      </div>
 
-      {/* Level name */}
-      <div className="text-center mb-3">
-        <p className="font-display font-bold text-gray-900">{levelInfo.name}</p>
-        <p className="text-xs text-gray-400">Level {levelInfo.level + 1}</p>
-      </div>
-
-      {/* XP bar */}
-      <div className="mb-3">
-        <div className="flex items-baseline justify-between mb-1">
-          <span className="text-xs text-gray-500">{totalXp} XP</span>
+        {/* XP bar */}
+        <div className="mt-1 mb-2">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-sprout-400 to-bloom-400 transition-all duration-700"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
           {!isMaxLevel && (
-            <span className="text-[11px] text-gray-400">
-              {levelInfo.xpInLevel} / {levelInfo.nextLevelXp! - levelInfo.xpForLevel} to next
-            </span>
+            <p className="text-[10px] text-gray-400 mt-0.5">{levelInfo.xpInLevel} / {levelInfo.nextLevelXp! - levelInfo.xpForLevel} XP</p>
           )}
         </div>
-        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-sprout-400 to-bloom-400 transition-all duration-700"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-        {isMaxLevel && (
-          <p className="text-[11px] text-bloom-600 mt-0.5 font-medium text-center">Max level reached! ✨</p>
-        )}
-      </div>
 
-      {/* Bottom row: streak + badges */}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-        <span className={`text-sm font-medium flex items-center gap-1.5 ${
-          streakAtRisk ? 'text-amber-600' : streak > 0 ? 'text-gray-700' : 'text-gray-400'
-        }`}>
-          <span>{streak > 0 ? '🔥' : '💤'}</span>
-          {streak > 0 ? `${streak} day streak` : 'Start a streak!'}
-          {streakAtRisk && <span className="text-xs font-normal">· log today!</span>}
-        </span>
-        <Link href="/achievements" className="text-sm text-bloom-600 hover:text-bloom-700 font-medium">
-          {achievementCount} badges →
-        </Link>
+        {/* Streak + badges */}
+        <div className="flex items-center justify-between">
+          <span className={`text-xs font-medium flex items-center gap-1 ${
+            streakAtRisk ? 'text-amber-600' : streak > 0 ? 'text-gray-700' : 'text-gray-400'
+          }`}>
+            <span>{streak > 0 ? '🔥' : '💤'}</span>
+            {streak > 0 ? `${streak} day streak` : 'No streak yet'}
+            {streakAtRisk && <span className="font-normal">· log today!</span>}
+          </span>
+          <span className="text-[11px] text-bloom-600 font-medium">{achievementCount} badges →</span>
+        </div>
       </div>
-    </div>
+    </Link>
   )
 }

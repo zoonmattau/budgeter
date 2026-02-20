@@ -100,9 +100,13 @@ interface AchievementContext {
   transactionCount?: number
   goalCount?: number
   goalCompleted?: boolean
+  goalsCompleted?: number
   streak?: number
   budgetSet?: boolean
   challengesWon?: number
+  netWorthPositive?: boolean
+  savingsRate?: number
+  underBudget?: boolean
 }
 
 /**
@@ -127,26 +131,73 @@ export async function checkAndUnlockAchievements(
 
   const toUnlock: AchievementType[] = []
 
+  // Onboarding
   if (context.transactionCount && context.transactionCount >= 1 && !alreadyUnlocked.has('first_transaction')) {
     toUnlock.push('first_transaction')
   }
   if (context.goalCount && context.goalCount >= 1 && !alreadyUnlocked.has('first_goal')) {
     toUnlock.push('first_goal')
   }
-  if (context.goalCompleted && !alreadyUnlocked.has('goal_complete')) {
-    toUnlock.push('goal_complete')
-  }
-  if (context.streak && context.streak >= 7 && !alreadyUnlocked.has('streak_7')) {
-    toUnlock.push('streak_7')
-  }
-  if (context.streak && context.streak >= 30 && !alreadyUnlocked.has('streak_30')) {
-    toUnlock.push('streak_30')
-  }
   if (context.budgetSet && !alreadyUnlocked.has('budget_set')) {
     toUnlock.push('budget_set')
   }
-  if (context.challengesWon && context.challengesWon >= 1 && !alreadyUnlocked.has('challenges_won')) {
-    toUnlock.push('challenges_won')
+
+  // Streaks
+  if (context.streak !== undefined) {
+    if (context.streak >= 3 && !alreadyUnlocked.has('streak_3')) toUnlock.push('streak_3')
+    if (context.streak >= 7 && !alreadyUnlocked.has('streak_7')) toUnlock.push('streak_7')
+    if (context.streak >= 14 && !alreadyUnlocked.has('streak_14')) toUnlock.push('streak_14')
+    if (context.streak >= 30 && !alreadyUnlocked.has('streak_30')) toUnlock.push('streak_30')
+    if (context.streak >= 100 && !alreadyUnlocked.has('streak_100')) toUnlock.push('streak_100')
+  }
+
+  // Transaction volume — query total when a transaction event arrives
+  if (context.transactionCount !== undefined) {
+    const needsCount =
+      !alreadyUnlocked.has('transactions_10') ||
+      !alreadyUnlocked.has('transactions_50') ||
+      !alreadyUnlocked.has('transactions_100')
+
+    if (needsCount) {
+      const { count } = await supabase
+        .from('transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .is('household_id', null)
+        .eq('type', 'expense')
+
+      const total = count ?? 0
+      if (total >= 10 && !alreadyUnlocked.has('transactions_10')) toUnlock.push('transactions_10')
+      if (total >= 50 && !alreadyUnlocked.has('transactions_50')) toUnlock.push('transactions_50')
+      if (total >= 100 && !alreadyUnlocked.has('transactions_100')) toUnlock.push('transactions_100')
+    }
+  }
+
+  // Goals
+  if (context.goalCompleted && !alreadyUnlocked.has('goal_complete')) {
+    toUnlock.push('goal_complete')
+  }
+  if (context.goalsCompleted !== undefined) {
+    if (context.goalsCompleted >= 3 && !alreadyUnlocked.has('goals_3_complete')) toUnlock.push('goals_3_complete')
+    if (context.goalsCompleted >= 5 && !alreadyUnlocked.has('goals_5_complete')) toUnlock.push('goals_5_complete')
+  }
+
+  // Challenges
+  if (context.challengesWon !== undefined) {
+    if (context.challengesWon >= 1 && !alreadyUnlocked.has('challenges_won')) toUnlock.push('challenges_won')
+    if (context.challengesWon >= 3 && !alreadyUnlocked.has('challenges_3')) toUnlock.push('challenges_3')
+    if (context.challengesWon >= 10 && !alreadyUnlocked.has('challenges_10')) toUnlock.push('challenges_10')
+  }
+
+  // Financial milestones
+  if (context.netWorthPositive && !alreadyUnlocked.has('net_worth_positive')) {
+    toUnlock.push('net_worth_positive')
+  }
+  if (context.savingsRate !== undefined && context.savingsRate >= 20 && !alreadyUnlocked.has('savings_rate_20')) {
+    toUnlock.push('savings_rate_20')
+  }
+  if (context.underBudget && !alreadyUnlocked.has('under_budget')) {
+    toUnlock.push('under_budget')
   }
 
   if (toUnlock.length === 0) return []
