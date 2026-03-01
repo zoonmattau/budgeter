@@ -1,20 +1,32 @@
 import { createClient } from '@/lib/supabase/server'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parse } from 'date-fns'
 import { formatCurrency } from '@/lib/utils'
+import { parseMonthParam } from '@/lib/month-utils'
+import { MonthSelector } from '@/components/ui/month-selector'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 
-export default async function CalendarPage() {
+interface CalendarPageProps {
+  searchParams: Promise<{ month?: string }>
+}
+
+export default async function CalendarPage({ searchParams }: CalendarPageProps) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
+  const params = await searchParams
+  const monthData = parseMonthParam(params.month)
+  const selectedDate = parse(monthData.monthKey + '-01', 'yyyy-MM-dd', new Date())
+
   const today = new Date()
-  const monthStart = startOfMonth(today)
-  const monthEnd = endOfMonth(today)
+  const monthStart = startOfMonth(selectedDate)
+  const monthEnd = endOfMonth(selectedDate)
   const todayStr = format(today, 'yyyy-MM-dd')
-  const monthStartStr = format(monthStart, 'yyyy-MM-dd')
-  const monthEndStr = format(monthEnd, 'yyyy-MM-dd')
+  const monthStartStr = monthData.monthStart
+  const monthEndStr = monthData.monthEnd
+  // For past months, query up to end of month; for current, up to today
+  const queryEndStr = monthData.dateRangeEnd
 
   const [{ data: transactions }, { data: bills }] = await Promise.all([
     supabase
@@ -23,7 +35,7 @@ export default async function CalendarPage() {
       .eq('user_id', user.id)
       .is('household_id', null)
       .gte('date', monthStartStr)
-      .lte('date', todayStr)
+      .lte('date', queryEndStr)
       .order('date', { ascending: true }),
     supabase
       .from('bills')
@@ -60,14 +72,17 @@ export default async function CalendarPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex items-center gap-3">
-        <Link href="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-gray-500" />
-        </Link>
-        <div>
-          <h1 className="font-display text-2xl font-bold text-gray-900">{format(today, 'MMMM yyyy')}</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Spending calendar</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard" className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <ArrowLeft className="w-5 h-5 text-gray-500" />
+          </Link>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-gray-900">{format(selectedDate, 'MMMM yyyy')}</h1>
+            <p className="text-gray-500 text-sm mt-0.5">Spending calendar</p>
+          </div>
         </div>
+        <MonthSelector currentMonth={monthData.monthKey} />
       </div>
 
       {/* Summary strip */}
@@ -103,7 +118,8 @@ export default async function CalendarPage() {
             const dayTx = txByDate.get(dateStr) || []
             const dayBills = billsByDate.get(dateStr) || []
             const isToday = dateStr === todayStr
-            const isFuture = dateStr > todayStr
+            // For current month, future = after today; for past months, nothing is "future"
+            const isFuture = monthData.isCurrentMonth && dateStr > todayStr
             const dayExpenses = dayTx.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
             const dayIncome = dayTx.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
             const hasBills = dayBills.length > 0

@@ -15,15 +15,17 @@ import { PlayerStats } from '@/components/dashboard/player-stats'
 import { syncWeeklyChallenges } from '@/app/actions/challenges'
 import { PaydayModal } from '@/components/dashboard/payday-modal'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
+import { MonthSelector } from '@/components/ui/month-selector'
 import { formatCurrency } from '@/lib/utils'
-import { format, startOfMonth, subMonths, addDays, subDays, startOfISOWeek } from 'date-fns'
+import { parseMonthParam } from '@/lib/month-utils'
+import { format, startOfMonth, subMonths, addDays, subDays, startOfISOWeek, parse } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
 import { calculateStreakFromTransactions } from '@/lib/gamification'
 import { awardXP, syncStreak, checkAndUnlockAchievements } from '@/app/actions/gamification'
 
 interface DashboardPageProps {
-  searchParams: Promise<{ scope?: string }>
+  searchParams: Promise<{ scope?: string; month?: string }>
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
@@ -33,8 +35,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   if (!user) return null
 
   const params = await searchParams
-  const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd')
-  const lastMonthStart = format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd')
+  const monthData = parseMonthParam(params.month)
+  const currentMonth = monthData.monthStart
+  const selectedDate = parse(monthData.monthKey + '-01', 'yyyy-MM-dd', new Date())
+  const lastMonthStart = format(startOfMonth(subMonths(selectedDate, 1)), 'yyyy-MM-dd')
 
   // Calculate date range for predictions
   const today = new Date()
@@ -148,14 +152,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .is('household_id', null),
 
     // Transactions - scope aware with profile data for household view
-    // Filter to current month but exclude future dates
+    // Filter to selected month (for past months, use full month; for current, up to today)
     scope === 'household' && householdId
       ? supabase
           .from('transactions')
           .select('*, categories(*), profiles:user_id(display_name), accounts:account_id(name)')
           .eq('household_id', householdId)
           .gte('date', currentMonth)
-          .lte('date', format(today, 'yyyy-MM-dd'))
+          .lte('date', monthData.dateRangeEnd)
           .order('date', { ascending: false })
       : supabase
           .from('transactions')
@@ -163,7 +167,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .eq('user_id', user.id)
           .is('household_id', null)
           .gte('date', currentMonth)
-          .lte('date', format(today, 'yyyy-MM-dd'))
+          .lte('date', monthData.dateRangeEnd)
           .order('date', { ascending: false }),
 
     // Goals - scope aware
@@ -299,25 +303,28 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           .maybeSingle(),
 
     // Last month's transactions up to same day — for trend comparison
+    // For past months, compare full months; for current, compare up to same day
     (() => {
-      const sameDayLastMonth = format(
-        new Date(subMonths(today, 1).getFullYear(), subMonths(today, 1).getMonth(), Math.min(today.getDate(), new Date(subMonths(today, 1).getFullYear(), subMonths(today, 1).getMonth() + 1, 0).getDate())),
-        'yyyy-MM-dd'
-      )
+      const lastMonthEnd = monthData.isCurrentMonth
+        ? format(
+            new Date(subMonths(today, 1).getFullYear(), subMonths(today, 1).getMonth(), Math.min(today.getDate(), new Date(subMonths(today, 1).getFullYear(), subMonths(today, 1).getMonth() + 1, 0).getDate())),
+            'yyyy-MM-dd'
+          )
+        : format(subMonths(parse(monthData.monthEnd, 'yyyy-MM-dd', new Date()), 1), 'yyyy-MM-dd')
       return scope === 'household' && householdId
         ? supabase
             .from('transactions')
             .select('amount, type')
             .eq('household_id', householdId)
             .gte('date', lastMonthStart)
-            .lte('date', sameDayLastMonth)
+            .lte('date', lastMonthEnd)
         : supabase
             .from('transactions')
             .select('amount, type')
             .eq('user_id', user.id)
             .is('household_id', null)
             .gte('date', lastMonthStart)
-            .lte('date', sameDayLastMonth)
+            .lte('date', lastMonthEnd)
     })(),
 
     // User stats for gamification
@@ -618,8 +625,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   if (monthlySinkingFunds > 0) fixedCostItems.push({ name: 'Sinking funds', amount: Math.round(monthlySinkingFunds) })
   if (householdContributionCost > 0) fixedCostItems.push({ name: 'Household contribution', amount: Math.round(householdContributionCost) })
 
-  const daysInMonth = new Date().getDate()
-  const dailyAverage = daysInMonth > 0 ? discretionarySpent / daysInMonth : 0
+  // For current month, use today's date; for past months, use full month
+  const daysInSelectedMonth = monthData.isCurrentMonth
+    ? new Date().getDate()
+    : new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate()
+  const dailyAverage = daysInSelectedMonth > 0 ? discretionarySpent / daysInSelectedMonth : 0
   const dailyTarget = discretionaryAllocated / 30
 
   // Find top spending category
@@ -637,17 +647,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <div className="space-y-6 pb-20">
-      {/* Greeting with Scope Toggle */}
+      {/* Greeting with Scope Toggle & Month Navigation */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold text-gray-900">
-            {getGreeting()}
+            {monthData.isCurrentMonth ? getGreeting() : format(selectedDate, 'MMMM yyyy')}
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            {format(new Date(), 'EEEE, MMMM d')}
+            {monthData.isCurrentMonth
+              ? format(new Date(), 'EEEE, MMMM d')
+              : 'Viewing past month'}
           </p>
         </div>
-        {isInHousehold && <ScopeToggle />}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <MonthSelector currentMonth={monthData.monthKey} />
+          {isInHousehold && <ScopeToggle />}
+        </div>
       </div>
 
       {/* Savings rate pill — only shown in personal scope when income exists */}
@@ -847,7 +862,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         discretionarySpent={discretionarySpent}
         topCategory={topCategory}
         transactions={typedTransactions}
-        daysInMonth={daysInMonth}
+        daysInMonth={daysInSelectedMonth}
         streak={currentStreak}
       />
 

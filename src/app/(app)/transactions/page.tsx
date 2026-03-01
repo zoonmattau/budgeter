@@ -6,13 +6,15 @@ import { QuickAddButton } from '@/components/transactions/quick-add-button'
 import { AccountFilter } from '@/components/transactions/account-filter'
 import { BackButton } from '@/components/ui/back-button'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
+import { MonthSelector } from '@/components/ui/month-selector'
 import { TransactionSearch } from '@/components/transactions/transaction-search'
-import { format, startOfMonth } from 'date-fns'
+import { parseMonthParam } from '@/lib/month-utils'
+import { format, parse } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 import type { MemberSpending } from '@/components/ui/member-breakdown'
 
 interface TransactionsPageProps {
-  searchParams: Promise<{ scope?: string; account?: string; category?: string; q?: string }>
+  searchParams: Promise<{ scope?: string; account?: string; category?: string; q?: string; month?: string }>
 }
 
 export default async function TransactionsPage({ searchParams }: TransactionsPageProps) {
@@ -22,7 +24,8 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
   if (!user) return null
 
   const params = await searchParams
-  const currentMonth = startOfMonth(new Date())
+  const monthData = parseMonthParam(params.month)
+  const selectedDate = parse(monthData.monthKey + '-01', 'yyyy-MM-dd', new Date())
 
   // Fetch household membership
   const { data: membership } = await supabase
@@ -90,10 +93,10 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         .eq('account_id', accountFilter)
         .lte('date', format(new Date(), 'yyyy-MM-dd'))
     } else {
-      // For general view, show current month only (exclude future)
+      // For general view, show selected month (for past months, full month; for current, up to today)
       query = query
-        .gte('date', format(currentMonth, 'yyyy-MM-dd'))
-        .lte('date', format(new Date(), 'yyyy-MM-dd'))
+        .gte('date', monthData.monthStart)
+        .lte('date', monthData.dateRangeEnd)
     }
 
     // Apply category filter
@@ -193,7 +196,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
   const getSubtitle = () => {
     if (selectedAccount) return 'All transactions'
-    return format(new Date(), 'MMMM yyyy')
+    return format(selectedDate, 'MMMM yyyy')
   }
 
   return (
@@ -222,6 +225,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         </div>
         <TransactionSearch />
         <div className="flex items-center gap-2 flex-wrap">
+          <MonthSelector currentMonth={monthData.monthKey} />
           {isInHousehold && <ScopeToggle />}
           <AccountFilter accounts={allAccounts || []} selectedAccountId={accountFilter} />
         </div>

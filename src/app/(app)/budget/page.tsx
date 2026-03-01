@@ -1,11 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { BudgetBuilder } from '@/components/budget/budget-builder'
 import { ScopeToggle } from '@/components/ui/scope-toggle'
-import { format, startOfMonth } from 'date-fns'
+import { MonthSelector } from '@/components/ui/month-selector'
+import { parseMonthParam } from '@/lib/month-utils'
+import { format, startOfMonth, subMonths, parse } from 'date-fns'
 import type { ViewScope, HouseholdMember } from '@/lib/scope-context'
 
 interface BudgetPageProps {
-  searchParams: Promise<{ scope?: string }>
+  searchParams: Promise<{ scope?: string; month?: string }>
 }
 
 export default async function BudgetPage({ searchParams }: BudgetPageProps) {
@@ -15,7 +17,9 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
   if (!user) return null
 
   const params = await searchParams
-  const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+  const monthData = parseMonthParam(params.month)
+  const currentMonth = monthData.monthStart
+  const selectedDate = parse(monthData.monthKey + '-01', 'yyyy-MM-dd', new Date())
 
   // Fetch household membership with contribution info
   const { data: membership } = await supabase
@@ -145,14 +149,14 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .eq('household_id', householdId)
           .eq('type', 'expense')
           .gte('date', currentMonth)
-          .lte('date', format(new Date(), 'yyyy-MM-dd'))
+          .lte('date', monthData.dateRangeEnd)
       : supabase
           .from('transactions')
           .select('*')
           .eq('user_id', user.id)
           .eq('type', 'expense')
           .gte('date', currentMonth)
-          .lte('date', format(new Date(), 'yyyy-MM-dd'))
+          .lte('date', monthData.dateRangeEnd)
           .is('household_id', null),
     scope === 'household' && householdId
       ? supabase
@@ -208,6 +212,28 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           .maybeSingle(),
   ])
 
+  // If no budgets exist for selected month, fetch prior month's as defaults
+  let effectiveBudgets = budgets || []
+  if (effectiveBudgets.length === 0) {
+    const lastMonth = format(startOfMonth(subMonths(selectedDate, 1)), 'yyyy-MM-dd')
+    const { data: lastMonthBudgets } = scope === 'household' && householdId
+      ? await supabase
+          .from('budgets')
+          .select('*, categories(name)')
+          .eq('household_id', householdId)
+          .eq('month', lastMonth)
+      : await supabase
+          .from('budgets')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('month', lastMonth)
+          .is('household_id', null)
+
+    if (lastMonthBudgets && lastMonthBudgets.length > 0) {
+      effectiveBudgets = lastMonthBudgets
+    }
+  }
+
   // For household budgets: deduplicate by category NAME (not ID) since each member
   // has their own categories with different IDs, then remap to current user's category IDs.
   const deduplicatedBudgets = scope === 'household'
@@ -218,8 +244,8 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           userCatByName[c.name.toLowerCase()] = c.id
         }
         // Deduplicate by category name, keep most recent
-        const byName: Record<string, NonNullable<typeof budgets>[0]> = {}
-        for (const b of budgets || []) {
+        const byName: Record<string, NonNullable<typeof effectiveBudgets>[0]> = {}
+        for (const b of effectiveBudgets) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const catName = (b as any).categories?.name?.toLowerCase() as string | undefined
           if (!catName) continue
@@ -237,7 +263,7 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
               : b
           })
       })()
-    : budgets || []
+    : effectiveBudgets
 
   // Filter out Interest and Other categories, then sort by user-defined order
   const sortedCategories = [...(categories || [])]
@@ -309,9 +335,12 @@ export default async function BudgetPage({ searchParams }: BudgetPageProps) {
           <h1 className="font-display text-2xl font-bold text-gray-900">
             {scope === 'household' ? 'Household Budget' : 'Budget'}
           </h1>
-          <p className="text-gray-500 text-sm mt-1">{format(new Date(), 'MMMM yyyy')}</p>
+          <p className="text-gray-500 text-sm mt-1">{format(selectedDate, 'MMMM yyyy')}</p>
         </div>
-        {isInHousehold && <ScopeToggle />}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <MonthSelector currentMonth={monthData.monthKey} />
+          {isInHousehold && <ScopeToggle />}
+        </div>
       </div>
 
       <BudgetBuilder
